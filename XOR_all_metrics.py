@@ -6,6 +6,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt  # Matplotlib is used to generate plots of data.
 import fla_metrics as fla
+import random_samplers as rs
 
 np.random.seed(1)
 
@@ -31,49 +32,6 @@ def cross_entropy_tf(predictions, targets):
 
 def mean_squared_error_tf(predictions, targets):
     return tf.reduce_mean(tf.reduce_sum(tf.pow(predictions - targets, 2), axis=1))
-
-
-def random_step_tf(weights):
-    return np.add(weights, np.random.uniform(-step_size, step_size, weights.shape))
-
-
-def progressive_manhattan_random_step_tf(weights, mask):
-    random_steps = np.zeros(weights.shape)
-    shape = weights.shape
-    random_steps = random_steps.flatten()
-    ind = np.random.choice(weights.size, size=1)
-    random_steps[ind] = step_size  # Manhattan: step size is constant
-    random_steps = random_steps.reshape(shape)
-    mask = bounds_check(weights, mask, random_steps * mask)
-    return np.add(weights, random_steps * mask), mask
-
-
-def progressive_random_step_tf(weights, mask):
-    random_steps = np.random.uniform(0, step_size, weights.shape)
-    mask = bounds_check(weights, mask, random_steps * mask)
-    return np.add(weights, random_steps * mask), mask
-
-
-def progressive_mask_tf(shape):
-    start = np.ones(shape) * -1
-    mask = np.random.randint(0, 2, shape)
-    start = start ** mask
-    print(start)
-    return start
-
-
-def bounds_check(inputs, mask, step):
-    conds = [np.absolute(inputs + step) > bounds, np.absolute(inputs + step) <= bounds]
-    funcs = [lambda mask: -mask, lambda mask: mask]
-    return np.piecewise(mask, conds, funcs)  # return mask
-
-
-def init_progressive_mask(mask):
-    random_nums = np.random.uniform(0, bounds, mask.shape)
-    conds = [mask == 1, mask == -1]
-    funcs = [lambda x: bounds - x, lambda x: x - bounds]
-    return np.piecewise(random_nums, conds, funcs)  # return initialised random numbers
-
 
 ##############################
 X_data = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
@@ -126,9 +84,9 @@ current_b2 = np.empty(b2.shape)
 
 all_weights = np.hstack((current_w1.flatten(), current_b1.flatten(), current_w2.flatten(), current_b2.flatten()))
 
-start = progressive_mask_tf(all_weights.shape)
+start = rs.progressive_mask_tf(all_weights.shape)
 
-all_weights = init_progressive_mask(start)
+all_weights = rs.init_progressive_mask(start, bounds)
 
 current_w1, current_b1, current_w2, current_b2 = np.hsplit(all_weights, [current_w1.flatten().size,
                                                                          current_w1.flatten().size + current_b2.flatten().size,
@@ -159,7 +117,7 @@ for iteration in range(training_iterations):
                                       y_tf: batch_y})
 
         # all_weights, start = progressive_manhattan_random_step_tf(all_weights, start)
-        all_weights, start = progressive_random_step_tf(all_weights, start)
+        all_weights, start = rs.progressive_random_step_tf(all_weights, start, step_size, bounds)
 
         current_w1, current_b1, current_w2, current_b2 = np.hsplit(all_weights, [current_w1.flatten().size,
                                                                                  current_w1.flatten().size + current_b2.flatten().size,
