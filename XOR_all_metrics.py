@@ -39,8 +39,6 @@ Y_data = np.array([0, 1, 1, 0])
 
 batch_size = X_data.shape[0]  # The whole dataset; i.e. batch gradient descent.
 
-starting_zone = tf.placeholder(tf.int32, [None])  # bit mask for progressive random walk
-
 x_tf = tf.placeholder(tf.float32, [None, num_input], name="inputs")
 y_tf = tf.placeholder(tf.int32, [None], name="outputs")
 
