@@ -28,7 +28,7 @@ display_step = 10
 # Sampling parameters
 step_size = 0.5
 bounds = 5
-num_walks = 10
+num_walks = 5
 
 # Network Parameters
 n_hidden_1 = 2 # 1st layer number of neurons
@@ -100,8 +100,6 @@ X = tf.placeholder(tf.float64, [None, num_input])
 Y = tf.placeholder(tf.float64, [None, num_classes])
 
 
-
-
 # Create model
 def neural_net(x):
     # Hidden fully connected layer with 256 neurons
@@ -166,6 +164,22 @@ with tf.Session() as sess:
 
 print(all_walks)
 
+# Work with ALL walks:
+all_err_diff = np.diff(all_walks, axis=1)
+print("ALL diff: ", all_err_diff) # TESTED: works
+# (1) Gradients:
+my_grad = np.apply_along_axis(fla.compute_grad, 1, all_walks, all_weights.shape[0], step_size, bounds)
+print ("Grad on ALL: ", my_grad) # each column corresponds to outputs per walk
+# (2) Ruggedness:
+my_rugg = np.apply_along_axis(fla.compute_fem, 1, all_err_diff)
+print ("FEM on ALL: ", my_rugg) # each column corresponds to outputs per walk
+# (3) Neutrality:
+my_neut1 = np.apply_along_axis(fla.compute_m1, 1, all_err_diff, 1.0e-8)
+my_neut2 = np.apply_along_axis(fla.compute_m2, 1, all_err_diff, 1.0e-8)
+print ("M1 on ALL: ", my_neut1) # each column corresponds to outputs per walk
+print ("M2 on ALL: ", my_neut2) # each column corresponds to outputs per walk
+
+
 # COMPUTE GRADIENT MEASURE
 # (1) calculate the fitness differences:
 err_diff = np.diff(error_history_py, axis=0)
@@ -179,5 +193,5 @@ print ("and FEM is: ", fla.compute_fem(err_diff[:, 0]))
 print ("and FEM is: ", fla.compute_fem(err_diff[:, 1]))
 
 # COMPUTE NEUTRALITY MEASURE
-print ("Neutrality M1: ", fla.compute_m1(fla.scale_walk(np.asarray(error_history_py)[:, 0]), 1.0e-8))
-print ("Neutrality M2: ", fla.compute_m2(fla.scale_walk(np.asarray(error_history_py)[:, 0]), 1.0e-8))
+print ("Neutrality M1: ", fla.compute_m1(np.asarray(error_history_py)[:, 0], 1.0e-8))
+print ("Neutrality M2: ", fla.compute_m2(np.asarray(error_history_py)[:, 0], 1.0e-8))

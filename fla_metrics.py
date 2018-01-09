@@ -104,7 +104,8 @@ def scale_walk(walk):
 
 
 def compute_m1(walk, epsilon):
-    """Calculate the neutrality metric M1. Input: progressive random walk (fitness values scaled to [0,1])"""
+    """Calculate the neutrality metric M1. Input: progressive random walk (will be scaled to [0,1])"""
+    walk = scale_walk(walk)
     m1 = 0.
     len_3p_walk = len(walk) - 2
     for i in range(0, len_3p_walk):
@@ -116,7 +117,8 @@ def compute_m1(walk, epsilon):
 
 
 def compute_m2(walk, epsilon):
-    """Calculate the neutrality metric M2. Input: progressive random walk (fitness values scaled to [0,1])"""
+    walk = scale_walk(walk)
+    """Calculate the neutrality metric M2. Input: progressive random walk (will be scaled to [0,1])"""
     m2 = 0.
     temp = 0.
     len_3p_walk = len(walk) - 2
