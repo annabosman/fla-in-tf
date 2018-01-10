@@ -21,14 +21,14 @@ Y_data = np.array([[0], [1], [1], [0]])
 
 # NN Parameters
 learning_rate = 0.1
-num_steps = 50
+num_steps = 1000
 batch_size = X_data.shape[0]  # The whole dataset; i.e. batch gradient descent.
-display_step = 10
+display_step = 100
 
 # Sampling parameters
-step_size = 0.5
 bounds = 5
-num_walks = 5 # make it equal to num weights (i.e. dimension)
+step_size = bounds * 0.1
+num_walks = 9 # make it equal to num weights (i.e. dimension)
 num_sims = 30
 
 # Network Parameters
@@ -83,11 +83,9 @@ Y = tf.placeholder(tf.float64, [None, num_classes])
 # Create model
 def neural_net(x):
     # Hidden fully connected layer with 256 neurons
-    layer_1 = tf.add(tf.matmul(x, weights['h1']), weights['b1'])
-    # Hidden fully connected layer with 256 neurons
-    #layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), weights['b2'])
+    layer_1 = tf.nn.xw_plus_b(x, weights['h1'], weights['b1'])
     # Output fully connected layer with a neuron for each class
-    out_layer = tf.matmul(layer_1, weights['out']) + weights['b3']
+    out_layer = tf.nn.xw_plus_b(layer_1, weights['out'], weights['b3'])
     return out_layer
 
 # Construct model
@@ -95,8 +93,9 @@ logits = neural_net(X)
 prediction = tf.nn.sigmoid(logits)
 
 # Define loss
-loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+cross_entropy_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
     logits=logits, labels=Y))
+mse_op = tf.reduce_mean(tf.square(prediction - Y))
 
 # Evaluate model
 correct_pred = tf.equal(tf.floor(prediction+0.5), Y)
@@ -109,34 +108,36 @@ init = tf.global_variables_initializer()
 def calculate_metrics(all_walks, dim):
     # Work with ALL walks:
     all_err_diff = np.diff(all_walks, axis=1)
-    print("ALL diff: ", all_err_diff)  # TESTED: works
-    # (1) Gradients:
+    # (1) Gradients [NB: requires a different walk!]:
     my_grad = np.apply_along_axis(fla.compute_grad, 1, all_walks, dim, step_size, bounds)
     print("Grad on ALL: ", my_grad)  # each column corresponds to outputs per walk
     # (2) Ruggedness:
     my_rugg = np.apply_along_axis(fla.compute_fem, 1, all_err_diff)
     print("FEM on ALL: ", my_rugg)  # each column corresponds to outputs per walk
+    print("Max FEM: ", np.amax(my_rugg, 0))
+    print("Min FEM: ", np.amin(my_rugg, 0))
+    print("Avg FEM: ", np.average(my_rugg, 0))
     # (3) Neutrality:
     my_neut1 = np.apply_along_axis(fla.compute_m1, 1, all_err_diff, 1.0e-8)
     my_neut2 = np.apply_along_axis(fla.compute_m2, 1, all_err_diff, 1.0e-8)
     print("M1 on ALL: ", my_neut1)  # each column corresponds to outputs per walk
     print("M2 on ALL: ", my_neut2)  # each column corresponds to outputs per walk
+    return my_grad, my_rugg, my_neut1, my_neut2
 
 
 def one_sim(sess):
-
-    all_walks = np.empty((num_walks, num_steps, 2))
+    all_walks = np.empty((num_walks, num_steps, 3))
     for walk_counter in range(0, num_walks):
-        error_history_py = np.empty((num_steps, 2))  # dimensions: x -> steps, y -> error metrics
+        error_history_py = np.empty((num_steps, 3))  # dimensions: x -> steps, y -> error metrics
 
         # weights for the current walk:
         current_weights = {
-            'h1': np.empty([num_input, n_hidden_1]),
+            'h1': np.empty(weights['h1'].shape),
             # 'h2': np.empty([n_hidden_1, n_hidden_2]),
-            'out': np.empty([n_hidden_1, num_classes]),
-            'b1': np.empty([n_hidden_1]),
+            'out': np.empty(weights['out'].shape),
+            'b1': np.empty(weights['b1'].shape),
             # 'b2': np.empty([n_hidden_2]),
-            'b3': np.empty([num_classes])
+            'b3': np.empty(weights['b3'].shape)
         }
 
         all_weights = np.concatenate([v.flatten() for k, v in sorted(current_weights.items())])
@@ -146,21 +147,23 @@ def one_sim(sess):
 
         for step in range(0, num_steps):
             # Calculate batch loss and accuracy
-            loss, acc = sess.run([loss_op, accuracy], feed_dict={X: X_data, Y: Y_data})
+            ce, mse, acc = sess.run([cross_entropy_op, mse_op, accuracy], feed_dict={X: X_data, Y: Y_data})
             if step % display_step == 0:
-                print("Step " + str(step) + ", Minibatch Loss= " + \
-                      "{:.4f}".format(loss) + ", Training Accuracy= " + \
+                print("Step " + str(step) + ", Cross-entropy Loss = " + \
+                      "{:.4f}".format(ce) + ", MSE Loss = " + \
+                      "{:.4f}".format(mse) + ", Training Accuracy = " + \
                       "{:.3f}".format(acc))
             all_weights, start = rs.progressive_random_step_tf(all_weights, start, step_size, bounds)
             assign_upd_weights(sess, current_weights, all_weights)
 
             # And now: update the weight variables!
-            error_history_py[step] = [loss, acc]
+            error_history_py[step] = [ce, mse, acc]
         print("Done with walk number ", walk_counter)
         all_walks[walk_counter] = error_history_py
 
     print("All random walks are done now.")
     print("Calculating FLA metrics...")
+    print("Dimensionality is: ", all_weights.shape[0])
     calculate_metrics(all_walks, all_weights.shape[0])
 
 
