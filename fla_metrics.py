@@ -150,7 +150,7 @@ def compute_grad(walk, n, step_size, bounds):
 
 if __name__ == '__main__':
     my_walk = np.array([0.,1.,0.,1.,1.,1.,1.,0.,1.,0.,1]) # test
-    print "M1: ", compute_m1(scale_walk(my_walk), 1e-8)
-    print "M2: ", compute_m2(scale_walk(my_walk), 1e-8)
+    print "M1: ", compute_m1(my_walk, 1e-8)
+    print "M2: ", compute_m2(my_walk, 1e-8)
     print "FEM: ", compute_fem(np.diff(my_walk))
     print "Grad: ", compute_grad(my_walk, 1, 0.1, 0.5)
