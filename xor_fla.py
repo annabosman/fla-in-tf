@@ -21,7 +21,7 @@ Y_data = np.array([[0], [1], [1], [0]])
 
 # NN Parameters
 learning_rate = 0.1
-num_steps = 1000
+num_steps = 100
 batch_size = X_data.shape[0]  # The whole dataset; i.e. batch gradient descent.
 display_step = 100
 
@@ -29,7 +29,7 @@ display_step = 100
 bounds = 5
 step_size = bounds * 0.1
 num_walks = 9 # make it equal to num weights (i.e. dimension)
-num_sims = 30
+num_sims = 2#30
 
 # Network Parameters
 n_hidden_1 = 2 # 1st layer number of neurons
@@ -164,8 +164,9 @@ def one_sim(sess):
     print("All random walks are done now.")
     print("Calculating FLA metrics...")
     print("Dimensionality is: ", all_weights.shape[0])
-    calculate_metrics(all_walks, all_weights.shape[0])
 
+    grad, fem, m1, m2 = calculate_metrics(all_walks, all_weights.shape[0])
+    return np.average(grad, 0), np.average(fem, 0), np.average(m1, 0), np.average(m2, 0)
 
 
 # Start training
@@ -173,6 +174,32 @@ with tf.Session() as sess:
     # Run the initializer
     tf.get_default_graph().finalize()
     sess.run(init)
+
+    grad_list = np.empty((num_sims, 2, 3))
+    fem_list = np.empty((num_sims, 3))
+    m_list = np.empty((num_sims, 2, 3))
+
     for i in range(0, num_sims):
-        one_sim(sess)
+        g, fem, m1, m2 = one_sim(sess)
+        print("Avg Grad: ", g)
+        print("Avg FEM: ", fem)
+        print("Avg M1: ", m1)
+        print("Avg M2: ", m2)
+        grad_list[i] = g
+        fem_list[i] = fem
+        m_list[i][0] = m1
+        m_list[i][1] = m2
         print("----------------------- Sim ",i," is done -------------------------------")
+        
+    print("Gradients across sims: ", grad_list)
+    print("FEM across sims: ", fem_list)
+    print("M1/M2 across sims: ", m_list)
+
+    g_avg = grad_list[:,0,:]
+    print("g_avg: ", g_avg)
+
+
+    g_dev = grad_list[:,1,:]
+    print("g_dev: ", g_dev)
+
+    np.savetxt("data/xor_g_avg_test.csv", g_avg, delimiter=",")
