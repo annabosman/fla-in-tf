@@ -17,19 +17,19 @@ X_data = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
 Y_data = np.array([[0], [1], [1], [0]])
 
 # NN Parameters
-num_steps = 1000    # FEM: 1000 steps; Neutrality: # steps proportionate to step size/search space
+num_steps = 100    # FEM: 1000 steps; Neutrality: # steps proportionate to step size/search space
 batch_size = X_data.shape[0]  # The whole data set; i.e. batch gradient descent.
 display_step = 100
 
 # Sampling parameters
-macro = False                                       # try micro and macro for all
-bounds = 1                                          # Also try: 0.5, 1
+macro = MACRO_SH                                    # try micro and macro for all
+bounds = BOUNDS_SH                                  # 0.5, 1, 5
 step_size = 0
 if macro is True: step_size = (2 * bounds) * 0.1    # 10% of the search space
 else: step_size = (2 * bounds) * 0.01               # 1% of the search space
 
 num_walks = 9   # make it equal to num weights (i.e. dimension)
-num_sims = 2   # 30 independent runs: for stats
+num_sims = 30   # 30 independent runs: for stats
 
 # Network Parameters
 n_hidden_1 = 2 # 1st layer number of neurons
@@ -78,7 +78,7 @@ def assign_upd_weights(session, current_weights, all_weights):
 # Create model
 def neural_net(x):
     # Hidden fully connected layer with 256 neurons
-    layer_1 = tf.nn.sigmoid(tf.nn.xw_plus_b(x, weights['h1'], weights['b1'])) ######## SIGMOID
+    layer_1 = tf.nn.ACTIVATION_SH(tf.nn.xw_plus_b(x, weights['h1'], weights['b1'])) ######## sigmoid, tanh, relu
     # Output fully connected layer with a neuron for each class
     out_layer = tf.nn.xw_plus_b(layer_1, weights['out'], weights['b3'])
     return out_layer
@@ -193,13 +193,13 @@ with tf.Session() as sess:
 
     for i in range(0, num_sims):
         all_w, d = one_sim(sess)
-        g, fem, m1, m2 = calculate_metrics(all_w, d)
-        #fem = calc_fem(all_w)
+        # g, fem, m1, m2 = calculate_metrics(all_w, d)
+        m1, m2 = calc_ms(all_w)
         # print("Avg Grad: ", g)
-        #print("Avg FEM for walk ", i+1, ": ", fem)
-        # print("Avg M1: ", m1)
-        # print("Avg M2: ", m2)
+        print("Avg M1: ", m1)
+        print("Avg M2: ", m2)
         # grad_list[i] = g
+        # fem_list[i] = fem
         m_list[i][0] = m1
         m_list[i][1] = m2
         print("----------------------- Sim ",i+1," is done -------------------------------")
@@ -208,18 +208,27 @@ with tf.Session() as sess:
     #print("FEM across sims: ", fem_list)
     print("M1/M2 across sims: ", m_list)
 
-    m1 = m_list[:,0,:]
-    print("m1: ", m1)
-
-    m2 = m_list[:,1,:]
-    print("m2: ", m2)
-
     # g_avg = grad_list[:,0,:]
     # print("g_avg: ", g_avg)
     #
     # g_dev = grad_list[:,1,:]
     # print("g_dev: ", g_dev)
+    filename1 = "data/xor_m1"
+    if macro is True: filename1 = filename1 + "_macro"
+    else: filename1 = filename1 + "_micro"
+    filename1 = filename1 + "_ACTIVATION_SH"
+    filename1 = filename1 + "_BOUNDS_SH.csv"
+    
+    filename2 = "data/xor_m2"
+    if macro is True: filename2 = filename2 + "_macro"
+    else: filename2 = filename2 + "_micro"
+    filename2 = filename2 + "_ACTIVATION_SH"
+    filename2 = filename2 + "_BOUNDS_SH.csv"
 
-    #with open("data/xor_fem_micro_1.csv", "a") as f:
-    #    np.savetxt(f, ["cross-entropy", "mse", "accuracy"], "%s")
-    #    np.savetxt(f, fem_list, delimiter=",")
+    with open(filename1, "a") as f:
+        np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+        np.savetxt(f, m_list[:,0,:], delimiter=",")
+
+    with open(filename2, "a") as f:
+        np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+        np.savetxt(f, m_list[:,1,:], delimiter=",")
