@@ -99,45 +99,6 @@ accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 # Define the initialisation op
 init = tf.global_variables_initializer()
 
-
-# This method must be run after a simulation, to calculate the necessary metrics on the obtained walks
-def calculate_metrics(all_walks, dim):
-    # Work with ALL walks:
-    all_err_diff = np.diff(all_walks, axis=1)
-    # (1) Gradients [NB: requires a Manhattan walk!]:
-    my_grad = calc_grad(all_walks, dim)
-    print("Average Gavg and Gdev: ", my_grad)  # each column corresponds to outputs per walk
-    # (2) Ruggedness [NB: requires a ]:
-    my_rugg = calc_fem(all_walks)
-    print("Average FEM: ", my_rugg)  # each column corresponds to outputs per walk
-    #print("Max FEM: ", np.amax(my_rugg, 0))
-    # (3) Neutrality:
-    my_neut1, my_neut2 = calc_ms(all_walks)
-    print("Average M1: ", my_neut1)  # each column corresponds to outputs per walk
-    print("Average M2: ", my_neut2)  # each column corresponds to outputs per walk
-    return my_grad, my_rugg, my_neut1, my_neut2
-
-
-def calc_grad(all_walks, dim):
-    # (1) Gradients [NB: requires a Manhattan walk!]:
-    my_grad = np.apply_along_axis(fla.compute_grad, 1, all_walks, dim, step_size, bounds)
-    return np.average(my_grad, 0)
-
-
-def calc_fem(all_walks):
-    # (2) Ruggedness [NB: requires a progressive random walk]:
-    my_rugg = np.apply_along_axis(fla.compute_fem, 1, np.diff(all_walks, axis=1))
-    return np.average(my_rugg, 0)
-
-
-def calc_ms(all_walks):
-    # (3) Neutrality [NB: requires a progressive random walk which does not cross the search space more than once]:
-    all_err_diff = np.diff(all_walks, axis=1)
-    my_neut1 = np.apply_along_axis(fla.compute_m1, 1, all_err_diff, 1.0e-8)
-    my_neut2 = np.apply_along_axis(fla.compute_m2, 1, all_err_diff, 1.0e-8)
-    return np.average(my_neut1, 0), np.average(my_neut2, 0)
-
-
 def one_sim(sess):
     all_walks = np.empty((num_walks, num_steps, 3))
     for walk_counter in range(0, num_walks):
@@ -193,7 +154,7 @@ with tf.Session() as sess:
 
     for i in range(0, num_sims):
         all_w, d = one_sim(sess)
-        g, fem, m1, m2 = calculate_metrics(all_w, d)
+        g, fem, m1, m2 = fla.calculate_metrics(all_w, d, step_size, bounds)
         #fem = calc_fem(all_w)
         # print("Avg Grad: ", g)
         #print("Avg FEM for walk ", i+1, ": ", fem)

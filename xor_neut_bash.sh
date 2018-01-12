@@ -7,7 +7,7 @@ for BOUNDS_SH in 0.5 1 5; do
         for ACTIVATION_SH in sigmoid tanh relu; do
             echo "Bounds: " ${BOUNDS_SH}  ", Macro: " ${MACRO_SH} ", Activation: " ${ACTIVATION_SH}
             echo "Bounds: " ${BOUNDS_SH}  ", Macro: " ${MACRO_SH} ", Activation: " ${ACTIVATION_SH} >> xor_neut_progress.txt
-            sed  "s/BOUNDS_SH/${BOUNDS_SH}/g" xor_fla_neutral_bashable.py > xor_fla_neutral_bashable_tmp1.py
+            sed  "s/BOUNDS_SH/${BOUNDS_SH}/g" xor_m_bash.py > xor_fla_neutral_bashable_tmp1.py
             sed  "s/MACRO_SH/${MACRO_SH}/g" xor_fla_neutral_bashable_tmp1.py > xor_fla_neutral_bashable_tmp2.py
             sed  "s/ACTIVATION_SH/${ACTIVATION_SH}/g" xor_fla_neutral_bashable_tmp2.py > xor_fla_neutral_bashable_tmp3.py
             python xor_fla_neutral_bashable_tmp3.py

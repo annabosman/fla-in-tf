@@ -174,7 +174,7 @@ plt.plot(b2_history[:, 0], b2_history[:, 1])
 
 # plt.axis('equal')
 plt.show()
-
+sess.close()
 writer.close()
 
 # In[ ]:
