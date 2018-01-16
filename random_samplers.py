@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import numpy as np
 
 
@@ -48,11 +50,11 @@ if __name__ == '__main__':
     my_bounds = 1
 
     start = progressive_mask_tf(my_init.shape)
-    print "Start mask: ", start
+    print("Start mask: ", start)
 
     my_init = init_progressive_mask(start, my_bounds)
-    print "Initial point: ", my_init
+    print("Initial point: ", my_init)
 
-    print "Next step, random: ", random_step_tf(my_init, my_step)
-    print "Next step + mask, progressive random: ", progressive_random_step_tf(my_init, start, my_step, my_bounds)
-    print "Next step + mask, progressive manhattan random: ", progressive_manhattan_random_step_tf(my_init, start, my_step, my_bounds)
+    print("Next step, random: ", random_step_tf(my_init, my_step))
+    print("Next step + mask, progressive random: ", progressive_random_step_tf(my_init, start, my_step, my_bounds))
+    print("Next step + mask, progressive manhattan random: ", progressive_manhattan_random_step_tf(my_init, start, my_step, my_bounds))
