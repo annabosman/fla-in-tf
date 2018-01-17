@@ -1,4 +1,4 @@
-""" Sampling Iris for FLA.
+""" Sampling Diabetes for FLA.
 Author: Anna Bosman
 Project: https://github.com/arakitianskaia/fla-in-numpy
 """
@@ -15,18 +15,20 @@ from nn_for_fla import FLANeuralNetwork
 from csv_data_reader import Data
 
 # Input/output data
-IRIS_TRAINING = "data/input/iris_training.csv"
+TRAINING_DATA = "data/input/diabetes.csv"
 
 data_reader = Data()
-data_reader.load(IRIS_TRAINING)
+data_reader.load(TRAINING_DATA)
 
 data_reader.standardise_features()
 
 X_data = data_reader.training_features
-Y_data = data_reader.training_labels_1hot
+Y_data = data_reader.training_labels
 
 #print("X_data: ", X_data)
 #print("Y_data: ", Y_data)
+#print("Num classes:",Y_data.shape[1])
+
 
 def get_data():
     return X_data, Y_data
@@ -46,13 +48,13 @@ if macro is True:
 else:
     step_size = (2 * bounds) * 0.01  # 1% of the search space
 
-num_walks = 35  # make it equal to num weights (i.e. dimension)
-num_sims = 0  # 30 independent runs: for stats
+num_walks = 81  # make it equal to num weights (i.e. dimension)
+num_sims = 1 # 30 independent runs: for stats
 
 # Network Parameters
-n_hidden_1 = 4  # 1st layer number of neurons
-num_input = 4  # two bits
-num_classes = 3  # 1 bit
+n_hidden_1 = 8  # 1st layer number of neurons
+num_input = X_data.shape[1]
+num_classes = Y_data.shape[1]
 
 # Define the initialisation op
 init = tf.global_variables_initializer()
