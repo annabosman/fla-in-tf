@@ -3,6 +3,7 @@ from __future__ import print_function
 import math
 import numpy as np
 
+
 def compute_s(epsilon, walk_diff):
     """Computer the symbolic array {-1,0,1} for the FEM metrics."""
     conds = [walk_diff < -epsilon, (walk_diff >= -epsilon) & (walk_diff <= epsilon), walk_diff > epsilon]

@@ -79,6 +79,15 @@ class FLANeuralNetwork(object):
         self.mse_op = self.mse()
         self.acc_op = self.accuracy()
 
+    def get_hidden_act(self):
+        if self.act_fn == tf.nn.sigmoid:
+            return "sigmoid"
+        elif self.act_fn == tf.nn.tanh:
+            return "tanh"
+        elif self.act_fn == tf.nn.relu:
+            return "relu"
+        return "unknown"
+
     def cross_entropy(self):
         ce_op = None
         if self.out_act_fn == tf.nn.sigmoid:
@@ -101,7 +110,7 @@ class FLANeuralNetwork(object):
             accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
             return accuracy
 
-    def one_sim(self, sess, num_walks, num_steps, bounds, step_size, walk_type, data_generator):
+    def one_sim(self, sess, num_walks, num_steps, bounds, step_size, walk_type, data_generator, print_to_screen=False):
         self.sess = sess
         all_walks = np.empty((num_walks, num_steps, 3))
         for walk_counter in range(0, num_walks):
@@ -116,7 +125,7 @@ class FLANeuralNetwork(object):
                 batch_x, batch_y = data_generator() ########## Provide correct generator from outside
                 # Calculate batch loss and accuracy
                 ce, mse, acc = sess.run([self.ce_op, self.mse_op, self.acc_op], feed_dict={self.X: batch_x, self.Y: batch_y})
-                if step % (num_steps/10) == 0:
+                if step % (num_steps/10) == 0 and print_to_screen is True:
                     print("Step " + str(step) + ", Cross-entropy Loss = " + \
                           "{:.4f}".format(ce) + ", MSE Loss = " + \
                           "{:.4f}".format(mse) + ", Training Accuracy = " + \
@@ -127,10 +136,11 @@ class FLANeuralNetwork(object):
                     all_weights, start = rs.progressive_manhattan_random_step_tf(all_weights, start, step_size, bounds)
                 self.assign_upd_weights(all_weights)
                 error_history_py[step] = [ce, mse, acc]
-            print("Done with walk number ", walk_counter+1)
+            if print_to_screen is True: print("Done with walk number ", walk_counter+1)
             all_walks[walk_counter] = error_history_py
 
-        print("All random walks are done now.")
-        print("Dimensionality is: ", all_weights.shape[0])
+        if print_to_screen is True:
+            print("All random walks are done now.")
+            print("Dimensionality is: ", all_weights.shape[0])
 
         return all_walks, all_weights.shape[0]

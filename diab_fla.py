@@ -20,14 +20,14 @@ TRAINING_DATA = "data/input/diabetes.csv"
 data_reader = Data()
 data_reader.load(TRAINING_DATA)
 
-data_reader.standardise_features()
+data_reader.scale_features_to_range()
 
 X_data = data_reader.training_features
 Y_data = data_reader.training_labels
 
-#print("X_data: ", X_data)
-#print("Y_data: ", Y_data)
-#print("Num classes:",Y_data.shape[1])
+print("X_data: ", X_data)
+print("Y_data: ", Y_data)
+print("Num classes:", Y_data.shape[1])
 
 
 def get_data():
@@ -49,7 +49,7 @@ else:
     step_size = (2 * bounds) * 0.01  # 1% of the search space
 
 num_walks = 81  # make it equal to num weights (i.e. dimension)
-num_sims = 1 # 30 independent runs: for stats
+num_sims = 0 # 30 independent runs: for stats
 
 # Network Parameters
 n_hidden_1 = 8  # 1st layer number of neurons

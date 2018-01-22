@@ -21,8 +21,8 @@ class Data:
             filename=training_filename, features_dtype=np.float32, target_dtype=np.int)
 
         self.training_features    = training_set.data.astype(np.float32)
+        self.training_labels_1hot = self.convert_to_one_hot(training_set.target)
         self.training_labels      = np.reshape(training_set.target,(training_set.target.shape[0], 1))
-        self.training_labels_1hot = self.convert_to_one_hot(self.training_labels)
 
 
     def convert_to_one_hot(self, vector, num_classes=None):

@@ -25,8 +25,8 @@ data_reader.scale_features_to_range()
 X_data = data_reader.training_features
 Y_data = data_reader.training_labels_1hot
 
-print("X_data: ", X_data)
-print("Y_data: ", Y_data)
+#print("X_data: ", X_data)
+#print("Y_data: ", Y_data)
 
 def get_data():
     return X_data, Y_data
@@ -37,8 +37,8 @@ num_steps = 100  # FEM: 1000 steps; Neutrality: # steps proportionate to step si
 batch_size = X_data.shape[0]  # The whole data set; i.e. batch gradient descent.
 
 # Sampling parameters
-macro = True  # try micro and macro for all
-bounds = 1  # Also try: 0.5, 1
+macro = MACRO_SH  # try micro and macro for all
+bounds = BOUNDS_SH  # Also try: 0.5, 1
 step_size = 0
 if macro is True:
     step_size = (2 * bounds) * 0.1  # 10% of the search space
@@ -46,39 +46,35 @@ else:
     step_size = (2 * bounds) * 0.01  # 1% of the search space
 
 num_walks = 35  # make it equal to num weights (i.e. dimension)
-num_sims = 0  # 30 independent runs: for stats
+num_sims = 30  # 30 independent runs: for stats
 
 # Network Parameters
 n_hidden_1 = 4  # 1st layer number of neurons
-num_input = 4  # two bits
-num_classes = 3  # 1 bit
+num_input = 4  # num features
+num_classes = 3  # 3 classes
 
 # Define the initialisation op
 init = tf.global_variables_initializer()
-nn_model = FLANeuralNetwork(n_hidden_1, num_input, num_classes, tf.nn.sigmoid, tf.nn.sigmoid)
+nn_model = FLANeuralNetwork(n_hidden_1, num_input, num_classes, tf.nn.ACTIVATION_SH, tf.nn.sigmoid)
 X, Y = nn_model.X, nn_model.Y
-
 # Do the sampling:
-config = tf.ConfigProto(allow_soft_placement=True)
-config.gpu_options.allow_growth = True
-
-with tf.Session(config=config) as sess:
+with tf.Session() as sess:
     # Run the initializer
     tf.get_default_graph().finalize()
     sess.run(init)
 
-    grad_list = np.empty((num_sims, 2, 3))
-    fem_list = np.empty((num_sims, 3))
+    #grad_list = np.empty((num_sims, 2, 3))
+    #fem_list = np.empty((num_sims, 3))
     m_list = np.empty((num_sims, 2, 3))
 
     for i in range(0, num_sims):
         all_w, d = nn_model.one_sim(sess, num_walks, num_steps, bounds, step_size, "progressive", get_data)
-        g, fem, m1, m2 = fla.calculate_metrics(all_w, d, step_size, bounds)
+        m1, m2 = fla.calc_ms(all_w)
         # fem = calc_fem(all_w)
-        print("Avg Grad: ", g)
-        print("Avg FEM for walk ", i+1, ": ", fem)
-        print("Avg M1: ", m1)
-        print("Avg M2: ", m2)
+        #print("Avg Grad: ", g)
+        #print("Avg FEM for walk ", i+1, ": ", fem)
+        #print("Avg M1: ", m1)
+        #print("Avg M2: ", m2)
         # grad_list[i] = g
         m_list[i][0] = m1
         m_list[i][1] = m2
@@ -88,18 +84,26 @@ with tf.Session(config=config) as sess:
     # print("FEM across sims: ", fem_list)
     print("M1/M2 across sims: ", m_list)
 
-    m1 = m_list[:, 0, :]
-    print("m1: ", m1)
+    filename1 = "data/output/iris/iris_m1"
+    if macro is True:
+        filename1 = filename1 + "_macro"
+    else:
+        filename1 = filename1 + "_micro"
+    filename1 = filename1 + "_ACTIVATION_SH"
+    filename1 = filename1 + "_BOUNDS_SH.csv"
 
-    m2 = m_list[:, 1, :]
-    print("m2: ", m2)
+    filename2 = "data/output/iris/iris_m2"
+    if macro is True:
+        filename2 = filename2 + "_macro"
+    else:
+        filename2 = filename2 + "_micro"
+    filename2 = filename2 + "_ACTIVATION_SH"
+    filename2 = filename2 + "_BOUNDS_SH.csv"
 
-    # g_avg = grad_list[:,0,:]
-    # print("g_avg: ", g_avg)
-    #
-    # g_dev = grad_list[:,1,:]
-    # print("g_dev: ", g_dev)
+    with open(filename1, "a") as f:
+        np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+        np.savetxt(f, m_list[:, 0, :], delimiter=",")
 
-    # with open("data/xor_fem_micro_1.csv", "a") as f:
-    #    np.savetxt(f, ["cross-entropy", "mse", "accuracy"], "%s")
-    #    np.savetxt(f, fem_list, delimiter=",")
+    with open(filename2, "a") as f:
+        np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+        np.savetxt(f, m_list[:, 1, :], delimiter=",")
