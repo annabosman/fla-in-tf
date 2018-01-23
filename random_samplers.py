@@ -45,16 +45,20 @@ def init_progressive_mask(mask, bounds):
 
 
 if __name__ == '__main__':
+    np.random.seed(123)
     my_init = np.empty(5) # test
-    my_step = 0.1
+    my_step = 0.3
     my_bounds = 1
 
     start = progressive_mask_tf(my_init.shape)
-    print("Start mask: ", start)
+    print("Initial mask: ", start)
 
     my_init = init_progressive_mask(start, my_bounds)
     print("Initial point: ", my_init)
 
     print("Next step, random: ", random_step_tf(my_init, my_step))
     print("Next step + mask, progressive random: ", progressive_random_step_tf(my_init, start, my_step, my_bounds))
+    print("Next step + mask, progressive random: ", progressive_random_step_tf(my_init, start, my_step, my_bounds))
+    print("Next step + mask, progressive manhattan random: ", progressive_manhattan_random_step_tf(my_init, start, my_step, my_bounds))
+    print("Next step + mask, progressive manhattan random: ", progressive_manhattan_random_step_tf(my_init, start, my_step, my_bounds))
     print("Next step + mask, progressive manhattan random: ", progressive_manhattan_random_step_tf(my_init, start, my_step, my_bounds))
