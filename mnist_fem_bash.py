@@ -8,8 +8,9 @@ from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 import fla_metrics as fla
-import random_samplers as rs
-from nn_for_fla import FLANeuralNetwork
+import random_samplers_tf as rs
+from nn_for_fla_tf import FLANeuralNetwork
+from fla_for_nn_tf import MetricGenerator
 
 # Import MNIST data
 from tensorflow.examples.tutorials.mnist import input_data
@@ -27,13 +28,8 @@ def get_data():
 num_steps = 200    # FEM, grad: 1000 steps; Neutrality: # steps proportionate to step size/search space
 batch_size = 100
 
-macro = MACRO_SH                                    # try micro and macro for all
-bounds = BOUNDS_SH                                  # 0.5, 1, 5
-step_size = 0
-if macro is True:
-    step_size = (2 * bounds) * 0.1    # 10% of the search space
-else:
-    step_size = (2 * bounds) * 0.01   # 1% of the search space
+macro = True#MACRO_SH                                    # try micro and macro for all
+bounds = 1#BOUNDS_SH                                  # 0.5, 1, 5
 
 num_walks = 203530   # make it equal to num weights (i.e. dimension)
 num_sims = 10        # 30 independent runs: for stats
@@ -43,35 +39,18 @@ n_hidden_1 = 256    # 1st layer number of neurons
 num_input = 784     # MNIST data input (img shape: 28*28)
 num_classes = 10    # MNIST total classes (0-9 digits)
 
-# Define the initialisation op
+# Do the sampling!
+nn_model = FLANeuralNetwork(num_input=num_input, num_classes=num_classes, num_hidden=[n_hidden_1],
+                            act_fn=tf.nn.sigmoid, out_act_fn=tf.nn.sigmoid)
+#nn_model.build_random_walk_graph(walk_type="progressive", step_size=step_size, bounds=bounds)
+mgen = MetricGenerator(nn_model, get_data, "progressive", num_steps, num_walks, num_sims, bounds,
+                       macro=True, print_to_screen=True)
+
+config = tf.ConfigProto(allow_soft_placement=True)
+config.gpu_options.allow_growth = True
 init = tf.global_variables_initializer()
-nn_model = FLANeuralNetwork(n_hidden_1, num_input, num_classes, tf.nn.ACTIVATION_SH, tf.nn.sigmoid)
-X, Y = nn_model.X, nn_model.Y
-# Do the sampling:
-with tf.Session() as sess:
-    # Run the initializer
+
+with tf.Session(config=config) as sess:
     tf.get_default_graph().finalize()
     sess.run(init)
-
-    fem_list = np.empty((num_sims, 3))
-
-    for i in range(0, num_sims):
-        all_w, d = nn_model.one_sim(sess, num_walks, num_steps, bounds, step_size, "progressive", get_data)
-        fem = fla.calc_fem(all_w)
-        print("Avg FEM for walk ", i+1, ": ", fem)
-        fem_list[i] = fem
-        print("----------------------- Sim ",i+1," is done -------------------------------")
-        
-    print("FEM across sims: ", fem_list)
-
-    filename1 = "data/mnist/mnist_fem"
-    if macro is True:
-        filename1 = filename1 + "_macro"
-    else:
-        filename1 = filename1 + "_micro"
-    filename1 = filename1 + "_ACTIVATION_SH"
-    filename1 = filename1 + "_BOUNDS_SH.csv"
-
-    with open(filename1, "a") as f:
-        np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
-        np.savetxt(f, fem_list, delimiter=",")
+    mgen.calculate_ruggedness_metrics(sess=sess, filename_header="data/output/mnist/TEST_mnist")

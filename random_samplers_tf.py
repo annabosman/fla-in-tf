@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-import matplotlib.pyplot as plt  # Matplotlib is used to generate plots of data.
+#import matplotlib.pyplot as plt  # Matplotlib is used to generate plots of data.
 
 
 def random_walk(num_steps, step_size, shape):
@@ -45,12 +45,21 @@ def progressive_manhattan_random_step_tf(weights, mask, step_size, bounds):
     return weights_op
 
 
-def progressive_mask_tf(shape): # turn into a generator?
+def progressive_mask_tf(scope, shape): # turn into a generator?
     start = tf.ones(shape) * -1
     mask_base = tf.random_uniform(shape, 0, 2, dtype=tf.int32)
     init_mask = start ** tf.cast(mask_base, tf.float32)
-    with tf.variable_scope("mask_var", reuse=tf.AUTO_REUSE):
-        mask = tf.get_variable("mask", dtype=tf.float32, initializer=init_mask)
+    with tf.variable_scope(scope):
+        with tf.variable_scope("mask_var", reuse=False):
+            mask = tf.get_variable("mask", dtype=tf.float32, initializer=init_mask)
+    return mask
+
+
+def reinit_progressive_mask_tf(mask):
+    start = tf.ones(mask.shape) * -1
+    mask_base = tf.random_uniform(mask.shape, 0, 2, dtype=tf.int32)
+    init_mask = start ** tf.cast(mask_base, tf.float32)
+    mask = tf.assign(mask, init_mask)
     return mask
 
 
@@ -62,13 +71,22 @@ def bounds_check(inputs, mask, step, bounds):
     return new_mask
 
 
-def init_progressive_mask(mask, bounds):
+def init_progressive_mask(scope, mask, bounds):
     random_nums = tf.random_uniform(mask.shape, 0, bounds, dtype=tf.float32)
     prog_nums = random_nums - bounds
     masked_nums = mask * prog_nums
-    with tf.variable_scope("pos_var", reuse=tf.AUTO_REUSE):
-        current_pos = tf.get_variable("pos", dtype=tf.float32, initializer=masked_nums)
+    with tf.variable_scope(scope):
+        with tf.variable_scope("pos_var", reuse=False):
+            current_pos = tf.get_variable("pos", dtype=tf.float32, initializer=masked_nums)
     return current_pos  # return initialised random numbers
+
+
+def reinit_progressive_pos(pos, mask, bounds):
+    random_nums = tf.random_uniform(mask.shape, 0, bounds, dtype=tf.float32)
+    prog_nums = random_nums - bounds
+    masked_nums = mask * prog_nums
+    pos = tf.assign(pos, masked_nums)
+    return pos  # return initialised random numbers
 
 if __name__ == '__main__':
     np.random.seed(123)
@@ -77,8 +95,8 @@ if __name__ == '__main__':
     my_step = tf.constant(0.3, dtype=tf.float32)
     my_bounds = tf.constant(1, dtype=tf.float32)
 
-    mask = progressive_mask_tf(current_pos.shape)           # Variable: mask
-    current_pos = init_progressive_mask(mask, my_bounds)    # Variable: pos
+    mask = progressive_mask_tf("my_mask", current_pos.shape)           # Variable: mask
+    current_pos = init_progressive_mask("my_pos", mask, my_bounds)    # Variable: pos
     # # We define a "shape-able" Variable
     # walk = tf.Variable( ##################### Replace with tensor array!
     #     [], # A list of scalars
@@ -125,10 +143,10 @@ if __name__ == '__main__':
         print("The walk: ", walk)
 
         # DRAW FIGURES (for debugging)
-        fig = plt.figure()
+        #fig = plt.figure()
 
-        plt.scatter(walk[:, 0], walk[:, 1])
-        plt.plot(walk[:, 0], walk[:, 1])
+#        plt.scatter(walk[:, 0], walk[:, 1])
+ #       plt.plot(walk[:, 0], walk[:, 1])
 
         # plt.axis('equal')
-        plt.show()
+  #      plt.show()
