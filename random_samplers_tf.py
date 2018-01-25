@@ -2,6 +2,17 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt  # Matplotlib is used to generate plots of data.
+
+
+def random_walk(num_steps, step_size, shape):
+    with tf.variable_scope("pos_var", reuse=tf.AUTO_REUSE):
+        current_pos = tf.get_variable("pos", dtype=tf.float32, initializer=tf.random_uniform(shape, -bounds, bounds, dtype=tf.float32))
+    init_state = (0, current_pos)
+    condition = lambda i, _: i < num_steps
+    body = lambda i, pos: (i + 1, random_step_tf(pos, step_size))
+    loop = tf.while_loop(condition, body, init_state)
+    return loop
 
 
 def random_step_tf(weights, step_size):
@@ -12,8 +23,9 @@ def random_step_tf(weights, step_size):
 def progressive_random_step_tf(weights, mask, step_size, bounds):
     random_steps = tf.random_uniform(weights.shape, 0, step_size)
     mask_op = tf.assign(mask, bounds_check(weights, mask, random_steps * mask, bounds))
-    weights_op = tf.assign_add(weights, random_steps * mask)
-    return weights_op, mask_op
+    with tf.control_dependencies([mask_op]):
+        weights_op = tf.assign_add(weights, random_steps * mask)
+    return weights_op
 
 
 def progressive_manhattan_random_step_tf(weights, mask, step_size, bounds):
@@ -28,15 +40,16 @@ def progressive_manhattan_random_step_tf(weights, mask, step_size, bounds):
     random_steps = tf.reshape(add_step, shape)
     masked_step = random_steps * mask
     mask_op = tf.assign(mask, bounds_check(weights, mask, masked_step, bounds))
-    weights_op = tf.assign_add(weights, random_steps * mask)
-    return weights_op, mask_op
+    with tf.control_dependencies([mask_op]):
+        weights_op = tf.assign_add(weights, random_steps * mask)
+    return weights_op
 
 
 def progressive_mask_tf(shape): # turn into a generator?
+    start = tf.ones(shape) * -1
+    mask_base = tf.random_uniform(shape, 0, 2, dtype=tf.int32)
+    init_mask = start ** tf.cast(mask_base, tf.float32)
     with tf.variable_scope("mask_var", reuse=tf.AUTO_REUSE):
-        start = tf.ones(shape) * -1
-        mask_base = tf.random_uniform(shape, 0, 2, dtype=tf.int32)
-        init_mask = start ** tf.cast(mask_base, tf.float32)
         mask = tf.get_variable("mask", dtype=tf.float32, initializer=init_mask)
     return mask
 
@@ -50,38 +63,45 @@ def bounds_check(inputs, mask, step, bounds):
 
 
 def init_progressive_mask(mask, bounds):
+    random_nums = tf.random_uniform(mask.shape, 0, bounds, dtype=tf.float32)
+    prog_nums = random_nums - bounds
+    masked_nums = mask * prog_nums
     with tf.variable_scope("pos_var", reuse=tf.AUTO_REUSE):
-        random_nums = tf.random_uniform(mask.shape, 0, bounds, dtype=tf.float32)
-        prog_nums = random_nums - bounds
-        masked_nums = mask * prog_nums
         current_pos = tf.get_variable("pos", dtype=tf.float32, initializer=masked_nums)
     return current_pos  # return initialised random numbers
-
 
 if __name__ == '__main__':
     np.random.seed(123)
     tf.set_random_seed(123)
-    current_pos = tf.zeros(5) # test
+    current_pos = tf.zeros(2) # test
     my_step = tf.constant(0.3, dtype=tf.float32)
     my_bounds = tf.constant(1, dtype=tf.float32)
 
     mask = progressive_mask_tf(current_pos.shape)           # Variable: mask
     current_pos = init_progressive_mask(mask, my_bounds)    # Variable: pos
-    # We define a "shape-able" Variable
-    walk = tf.Variable( ##################### Replace with tensor array!
-        [], # A list of scalars
-        dtype=tf.float32,
-        validate_shape=False, # By "shape-able", i mean we don't validate the shape so we can change it
-        trainable=False
-    )
-    # Build the walk:
-    walk_concat = tf.concat([walk, current_pos], 0)
-    walk_assign_op = tf.assign(walk, walk_concat, validate_shape=False)  # We force TF to skip the shape validation step
+    # # We define a "shape-able" Variable
+    # walk = tf.Variable( ##################### Replace with tensor array!
+    #     [], # A list of scalars
+    #     dtype=tf.float32,
+    #     validate_shape=False, # By "shape-able", i mean we don't validate the shape so we can change it
+    #     trainable=False
+    # )
+    # # Build the walk:
+    # walk_concat = tf.concat([walk, current_pos], 0)
+    # walk_assign_op = tf.assign(walk, walk_concat, validate_shape=False)  # We force TF to skip the shape validation step
+    #step = tf.Variable(0, name='step', trainable=False, dtype=tf.int32)
+    #increment_step = tf.assign(step, step+1)
 
-    with tf.control_dependencies([walk_assign_op]):
-        random_step_op = random_step_tf(current_pos, my_step)
-        prog_random_step_op, prog_mask_op = progressive_random_step_tf(current_pos, mask, my_step, my_bounds)
-        manhattan_step_op, _ = progressive_manhattan_random_step_tf(current_pos, mask, my_step, my_bounds)
+    #walk = tf.TensorArray(dtype=tf.float32, size=7, dynamic_size=True)
+    #with tf.control_dependencies([increment_step]):
+    #    walk = walk.write(step, current_pos)
+
+#    with tf.control_dependencies([walk_op]):
+    random_step_op = random_step_tf(current_pos, my_step)
+    prog_random_step_op = progressive_random_step_tf(current_pos, mask, my_step, my_bounds)
+    manhattan_step_op = progressive_manhattan_random_step_tf(current_pos, mask, my_step, my_bounds)
+
+    #my_walk = walk.stack()
 
     init = tf.global_variables_initializer()
     config = tf.ConfigProto(allow_soft_placement=True)
@@ -92,20 +112,23 @@ if __name__ == '__main__':
         print("Initial mask: ", sess.run(mask))
         print("Initial point: ", sess.run(current_pos))
         print("Next step, random: ", sess.run(random_step_op))
-        prog_s, m_s = sess.run([prog_random_step_op, prog_mask_op])
-
-        print("Next step + mask, progressive random: ", prog_s, m_s)
-        prog_s, m_s = sess.run([prog_random_step_op, prog_mask_op])
-        print("Next step + mask, progressive random: ", prog_s, m_s)
+        prog_s = sess.run(prog_random_step_op)
+        print("Next step + mask, progressive random: ", prog_s, sess.run(mask))
+        prog_s = sess.run(prog_random_step_op)
+        print("Next step + mask, progressive random: ", prog_s, sess.run(mask))
 
         sess.run(init) # re-init
-        prog_s, m_s = sess.run([manhattan_step_op, prog_mask_op])
-        print("Next step + mask, progressive manhattan random: ", prog_s, m_s)
-        prog_s, m_s = sess.run([manhattan_step_op, prog_mask_op])
-        print("Next step + mask, progressive manhattan random: ", prog_s, m_s)
-        prog_s, m_s = sess.run([manhattan_step_op, prog_mask_op])
-        print("Next step + mask, progressive manhattan random: ", prog_s, m_s)
-        prog_s, m_s = sess.run([manhattan_step_op, prog_mask_op])
-        print("Next step + mask, progressive manhattan random: ", prog_s, m_s)
+        walk = np.array([sess.run(current_pos)])
+        for i in range(10):
+            step = sess.run(manhattan_step_op)
+            walk = np.append(walk, [sess.run(current_pos)], axis=0)
+        print("The walk: ", walk)
 
-        print("The walk: ", sess.run(walk))
+        # DRAW FIGURES (for debugging)
+        fig = plt.figure()
+
+        plt.scatter(walk[:, 0], walk[:, 1])
+        plt.plot(walk[:, 0], walk[:, 1])
+
+        # plt.axis('equal')
+        plt.show()
