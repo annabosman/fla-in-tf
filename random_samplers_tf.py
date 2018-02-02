@@ -71,7 +71,7 @@ def bounds_check(inputs, mask, step, bounds):
     return new_mask
 
 
-def init_progressive_mask(scope, mask, bounds):
+def init_progressive_pos(scope, mask, bounds):
     random_nums = tf.random_uniform(mask.shape, 0, bounds, dtype=tf.float32)
     prog_nums = random_nums - bounds
     masked_nums = mask * prog_nums
@@ -95,8 +95,8 @@ if __name__ == '__main__':
     my_step = tf.constant(0.3, dtype=tf.float32)
     my_bounds = tf.constant(1, dtype=tf.float32)
 
-    mask = progressive_mask_tf("my_mask", current_pos.shape)           # Variable: mask
-    current_pos = init_progressive_mask("my_pos", mask, my_bounds)    # Variable: pos
+    mask = progressive_mask_tf("my_mask", current_pos.shape)         # Variable: mask
+    current_pos = init_progressive_pos("my_pos", mask, my_bounds)    # Variable: pos
     # # We define a "shape-able" Variable
     # walk = tf.Variable( ##################### Replace with tensor array!
     #     [], # A list of scalars
@@ -118,7 +118,6 @@ if __name__ == '__main__':
     random_step_op = random_step_tf(current_pos, my_step)
     prog_random_step_op = progressive_random_step_tf(current_pos, mask, my_step, my_bounds)
     manhattan_step_op = progressive_manhattan_random_step_tf(current_pos, mask, my_step, my_bounds)
-
     #my_walk = walk.stack()
 
     init = tf.global_variables_initializer()
@@ -129,6 +128,10 @@ if __name__ == '__main__':
         sess.run(init)
         print("Initial mask: ", sess.run(mask))
         print("Initial point: ", sess.run(current_pos))
+
+        sess.run(init)
+        print("Re-initialised mask: ", sess.run(mask))
+        print("Re-initialised point: ", sess.run(current_pos))
         print("Next step, random: ", sess.run(random_step_op))
         prog_s = sess.run(prog_random_step_op)
         print("Next step + mask, progressive random: ", prog_s, sess.run(mask))
@@ -140,7 +143,7 @@ if __name__ == '__main__':
         for i in range(10):
             step = sess.run(manhattan_step_op)
             walk = np.append(walk, [sess.run(current_pos)], axis=0)
-        print("The walk: ", walk)
+        print("Manhattan progressive walk: ", walk)
 
         # DRAW FIGURES (for debugging)
         #fig = plt.figure()

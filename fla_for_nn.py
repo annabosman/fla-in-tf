@@ -24,50 +24,106 @@ class MetricGenerator:
         self.nn_model = nn_model
         self.print_to_screen = print_to_screen
 
-    def calculate_neutrality_metrics(self, filename_header):
-        init = tf.global_variables_initializer()
-        config = tf.ConfigProto(allow_soft_placement=True)
-        config.gpu_options.allow_growth = True
-        with tf.Session(config=config) as sess:
-            # Run the initializer
-            tf.get_default_graph().finalize()
-            sess.run(init)
+    def calculate_neutrality_metrics(self, filename_header, sess):
+        m_list = np.empty((self.num_sims, 2, 3))
 
-            m_list = np.empty((self.num_sims, 2, 3))
-
-            for i in range(0, self.num_sims):
-                all_w, d = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.bounds, self.step_size, "progressive", self.get_data, self.print_to_screen)
-                m1, m2 = fla.calc_ms(all_w)
-                if self.print_to_screen is True:
-                    print("Avg M1: ", m1)
-                    print("Avg M2: ", m2)
-                m_list[i][0] = m1
-                m_list[i][1] = m2
-                print("----------------------- Sim ", i + 1, " is done -------------------------------")
-
+        for i in range(0, self.num_sims):
+            all_w, d = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.bounds, self.step_size, "progressive", self.get_data, self.print_to_screen)
+            m1, m2 = fla.calc_ms(all_w)
             if self.print_to_screen is True:
-                print("M1/M2 across sims: ", m_list)
+                print("Avg M1: ", m1)
+                print("Avg M2: ", m2)
+            m_list[i][0] = m1
+            m_list[i][1] = m2
+            print("----------------------- Sim ", i + 1, " is done -------------------------------")
 
-            filename1 = filename_header + "_m1"
-            if self.macro is True:
-                filename1 = filename1 + "_macro_"
-            else:
-                filename1 = filename1 + "_micro_"
-            filename1 = filename1 + self.nn_model.get_hidden_act()
-            filename1 = filename1 + "_" + str(self.bounds) + ".csv"
+        if self.print_to_screen is True:
+            print("M1/M2 across sims: ", m_list)
 
-            filename2 = filename_header + "_m2"
-            if self.macro is True:
-                filename2 = filename2 + "_macro_"
-            else:
-                filename2 = filename2 + "_micro_"
-            filename2 = filename2 + self.nn_model.get_hidden_act()
-            filename2 = filename2 + "_" + str(self.bounds) + ".csv"
+        filename1 = filename_header + "_m1"
+        if self.macro is True:
+            filename1 = filename1 + "_macro_"
+        else:
+            filename1 = filename1 + "_micro_"
+        filename1 = filename1 + self.nn_model.get_hidden_act()
+        filename1 = filename1 + "_" + str(self.bounds) + ".csv"
 
-            with open(filename1, "a") as f:
-                np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
-                np.savetxt(f, m_list[:, 0, :], delimiter=",")
+        filename2 = filename_header + "_m2"
+        if self.macro is True:
+            filename2 = filename2 + "_macro_"
+        else:
+            filename2 = filename2 + "_micro_"
+        filename2 = filename2 + self.nn_model.get_hidden_act()
+        filename2 = filename2 + "_" + str(self.bounds) + ".csv"
 
-            with open(filename2, "a") as f:
-                np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
-                np.savetxt(f, m_list[:, 1, :], delimiter=",")
+        with open(filename1, "a") as f:
+            np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+            np.savetxt(f, m_list[:, 0, :], delimiter=",")
+
+        with open(filename2, "a") as f:
+            np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+            np.savetxt(f, m_list[:, 1, :], delimiter=",")
+
+    def calculate_ruggedness_metrics(self, filename_header, sess):
+        fem_list = np.empty((self.num_sims, 3))
+
+        for i in range(0, self.num_sims):
+            all_w, d = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.bounds, self.step_size, "progressive", self.get_data, self.print_to_screen)
+            fem = fla.calc_fem(all_w)
+            if self.print_to_screen is True:
+                print("Avg FEM: ", fem)
+            fem_list[i] = fem
+            print("----------------------- Sim ", i + 1, " is done -------------------------------")
+
+        if self.print_to_screen is True:
+            print("FEM across sims: ", fem_list)
+
+        filename1 = filename_header + "_fem"
+        if self.macro is True:
+            filename1 = filename1 + "_macro_"
+        else:
+            filename1 = filename1 + "_micro_"
+        filename1 = filename1 + self.nn_model.get_hidden_act()
+        filename1 = filename1 + "_" + str(self.bounds) + ".csv"
+
+        with open(filename1, "a") as f:
+            np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+            np.savetxt(f, fem_list, delimiter=",")
+
+    def calculate_gradient_metrics(self, filename_header, sess):
+        grad_list = np.empty((self.num_sims, 2, 3))
+
+        for i in range(0, self.num_sims):
+            all_w, d = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.bounds, self.step_size, "manhattan", self.get_data, self.print_to_screen)
+            g = fla.calc_grad(all_w, d, self.step_size, self.bounds)
+            if self.print_to_screen is True:
+                print("Avg Grad: ", g)
+            grad_list[i] = g
+            print("----------------------- Sim ", i + 1, " is done -------------------------------")
+
+        if self.print_to_screen is True:
+            print("Grad across sims: ", grad_list)
+
+        filename1 = filename_header + "_gavg"
+        if self.macro is True:
+            filename1 = filename1 + "_macro_"
+        else:
+            filename1 = filename1 + "_micro_"
+        filename1 = filename1 + self.nn_model.get_hidden_act()
+        filename1 = filename1 + "_" + str(self.bounds) + ".csv"
+
+        filename2 = filename_header + "_gdev"
+        if self.macro is True:
+            filename2 = filename2 + "_macro_"
+        else:
+            filename2 = filename2 + "_micro_"
+        filename2 = filename2 + self.nn_model.get_hidden_act()
+        filename2 = filename2 + "_" + str(self.bounds) + ".csv"
+
+        with open(filename1, "a") as f:
+            np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+            np.savetxt(f, grad_list[:, 0, :], delimiter=",")
+
+        with open(filename2, "a") as f:
+            np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+            np.savetxt(f, grad_list[:, 1, :], delimiter=",")

@@ -12,6 +12,7 @@ import fla_metrics as fla
 import random_samplers as rs
 
 from nn_for_fla import FLANeuralNetwork
+from fla_for_nn import MetricGenerator
 from csv_data_reader import Data
 
 # Input/output data
@@ -25,31 +26,20 @@ data_reader.scale_features_to_range()
 X_data = data_reader.training_features
 Y_data = data_reader.training_labels
 
-print("X_data: ", X_data)
-print("Y_data: ", Y_data)
-print("Num classes:", Y_data.shape[1])
-
+#print("X_data: ", X_data)
+#print("Y_data: ", Y_data)
+#print("Num classes:", Y_data.shape[1])
 
 def get_data():
     return X_data, Y_data
 
-
-# NN Parameters
-num_steps = 100  # FEM: 1000 steps; Neutrality: # steps proportionate to step size/search space
-batch_size = X_data.shape[0]  # The whole data set; i.e. batch gradient descent.
-display_step = 100
-
 # Sampling parameters
+num_steps = 1000  # FEM: 1000 steps; Neutrality: # steps proportionate to step size/search space
 macro = True  # try micro and macro for all
 bounds = 1  # Also try: 0.5, 1
-step_size = 0
-if macro is True:
-    step_size = (2 * bounds) * 0.1  # 10% of the search space
-else:
-    step_size = (2 * bounds) * 0.01  # 1% of the search space
 
 num_walks = 81  # make it equal to num weights (i.e. dimension)
-num_sims = 0 # 30 independent runs: for stats
+num_sims = 1 # 30 independent runs: for stats
 
 # Network Parameters
 n_hidden_1 = 8  # 1st layer number of neurons
@@ -59,46 +49,14 @@ num_classes = Y_data.shape[1]
 # Define the initialisation op
 init = tf.global_variables_initializer()
 nn_model = FLANeuralNetwork(n_hidden_1, num_input, num_classes, tf.nn.sigmoid, tf.nn.sigmoid)
-X, Y = nn_model.X, nn_model.Y
-# Do the sampling:
-with tf.Session() as sess:
-    # Run the initializer
+mgen = MetricGenerator(get_data=get_data, num_steps=num_steps, bounds=bounds, macro=macro, num_walks=num_walks, num_sims=num_sims, nn_model=nn_model, print_to_screen=True)
+
+init = tf.global_variables_initializer()
+config = tf.ConfigProto(allow_soft_placement=True)
+config.gpu_options.allow_growth = True
+with tf.Session(config=config) as sess:
     tf.get_default_graph().finalize()
     sess.run(init)
-
-    grad_list = np.empty((num_sims, 2, 3))
-    fem_list = np.empty((num_sims, 3))
-    m_list = np.empty((num_sims, 2, 3))
-
-    for i in range(0, num_sims):
-        all_w, d = nn_model.one_sim(sess, num_walks, num_steps, bounds, step_size, "progressive", get_data)
-        g, fem, m1, m2 = fla.calculate_metrics(all_w, d, step_size, bounds)
-        # fem = calc_fem(all_w)
-        print("Avg Grad: ", g)
-        print("Avg FEM for walk ", i+1, ": ", fem)
-        print("Avg M1: ", m1)
-        print("Avg M2: ", m2)
-        # grad_list[i] = g
-        m_list[i][0] = m1
-        m_list[i][1] = m2
-        print("----------------------- Sim ", i + 1, " is done -------------------------------")
-
-    # print("Gradients across sims: ", grad_list)
-    # print("FEM across sims: ", fem_list)
-    print("M1/M2 across sims: ", m_list)
-
-    m1 = m_list[:, 0, :]
-    print("m1: ", m1)
-
-    m2 = m_list[:, 1, :]
-    print("m2: ", m2)
-
-    # g_avg = grad_list[:,0,:]
-    # print("g_avg: ", g_avg)
-    #
-    # g_dev = grad_list[:,1,:]
-    # print("g_dev: ", g_dev)
-
-    # with open("data/xor_fem_micro_1.csv", "a") as f:
-    #    np.savetxt(f, ["cross-entropy", "mse", "accuracy"], "%s")
-    #    np.savetxt(f, fem_list, delimiter=",")
+    mgen.calculate_ruggedness_metrics("data/output/diab_test", sess)
+    mgen.num_steps = 200
+    mgen.calculate_neutrality_metrics("data/output/diab_test", sess)
