@@ -136,7 +136,7 @@ class FLANeuralNetwork(object):
         self.init = tf.global_variables_initializer()
         if self.walk_type == "random":
             for w in self.all_weights:
-                self.weight_upd_ops.append(rs.random_step_tf(w, step_size))
+                self.weight_upd_ops.append(rs.bounded_random_step_tf(w, step_size, bounds))
         if self.walk_type == "progressive":
             for w in self.all_weights:
                 mask = get_random_mask(w.name[:len(w.name)-2], w.shape)#rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)

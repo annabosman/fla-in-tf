@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-#import matplotlib.pyplot as plt  # Matplotlib is used to generate plots of data.
+import matplotlib.pyplot as plt  # Matplotlib is used to generate plots of data.
 
 
 def random_walk(num_steps, step_size, shape):
@@ -17,6 +17,11 @@ def random_walk(num_steps, step_size, shape):
 
 def random_step_tf(weights, step_size):
     new_weight = tf.assign_add(weights, tf.random_uniform(weights.shape, -step_size, step_size))
+    return new_weight
+
+
+def bounded_random_step_tf(weights, step_size, bounds):
+    new_weight = tf.assign_add(weights, bounds_check_no_mask(weights, tf.random_uniform(weights.shape, -step_size, step_size), bounds))
     return new_weight
 
 
@@ -45,7 +50,7 @@ def progressive_manhattan_random_step_tf(weights, mask, step_size, bounds):
     return weights_op
 
 
-def progressive_mask_tf(scope, shape): # turn into a generator?
+def progressive_mask_tf(scope, shape):
     start = tf.ones(shape) * -1
     mask_base = tf.random_uniform(shape, 0, 2, dtype=tf.int32)
     init_mask = start ** tf.cast(mask_base, tf.float32)
@@ -62,6 +67,12 @@ def reinit_progressive_mask_tf(mask):
     mask = tf.assign(mask, init_mask)
     return mask
 
+def bounds_check_no_mask(inputs, step, bounds):
+    new_inputs = inputs + step
+    over_bounds = tf.abs(new_inputs) > bounds
+    over_bounds = tf.Print(over_bounds, [over_bounds], message="over bounds: ")
+    new_step = step * tf.cast((1 + (-2) * tf.cast(over_bounds, dtype=tf.int32)), dtype=tf.float32)
+    return new_step
 
 def bounds_check(inputs, mask, step, bounds):
     new_inputs = inputs + step
@@ -116,6 +127,7 @@ if __name__ == '__main__':
 
 #    with tf.control_dependencies([walk_op]):
     random_step_op = random_step_tf(current_pos, my_step)
+    bounded_random_step_op = bounded_random_step_tf(current_pos, my_step, my_bounds)
     prog_random_step_op = progressive_random_step_tf(current_pos, mask, my_step, my_bounds)
     manhattan_step_op = progressive_manhattan_random_step_tf(current_pos, mask, my_step, my_bounds)
     #my_walk = walk.stack()
@@ -133,6 +145,11 @@ if __name__ == '__main__':
         print("Re-initialised mask: ", sess.run(mask))
         print("Re-initialised point: ", sess.run(current_pos))
         print("Next step, random: ", sess.run(random_step_op))
+        print("Next step, bounded random: ", sess.run(bounded_random_step_op))
+        print("Next step, bounded random: ", sess.run(bounded_random_step_op))
+        print("Next step, bounded random: ", sess.run(bounded_random_step_op))
+        print("Next step, bounded random: ", sess.run(bounded_random_step_op))
+        print("Next step, bounded random: ", sess.run(bounded_random_step_op))
         prog_s = sess.run(prog_random_step_op)
         print("Next step + mask, progressive random: ", prog_s, sess.run(mask))
         prog_s = sess.run(prog_random_step_op)
@@ -141,15 +158,15 @@ if __name__ == '__main__':
         sess.run(init) # re-init
         walk = np.array([sess.run(current_pos)])
         for i in range(10):
-            step = sess.run(manhattan_step_op)
+            step = sess.run(bounded_random_step_op)
             walk = np.append(walk, [sess.run(current_pos)], axis=0)
-        print("Manhattan progressive walk: ", walk)
+        print("Bounded random walk: ", walk)
 
         # DRAW FIGURES (for debugging)
-        #fig = plt.figure()
+        fig = plt.figure()
 
-#        plt.scatter(walk[:, 0], walk[:, 1])
- #       plt.plot(walk[:, 0], walk[:, 1])
+        plt.scatter(walk[:, 0], walk[:, 1])
+        plt.plot(walk[:, 0], walk[:, 1])
 
         # plt.axis('equal')
-  #      plt.show()
+        plt.show()
