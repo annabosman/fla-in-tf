@@ -20,8 +20,18 @@ def random_step_tf(weights, step_size):
     return new_weight
 
 
+def random_step_calc_tf(weights, step_size):
+    new_weight = tf.add(weights, tf.random_uniform(weights.shape, -step_size, step_size))
+    return new_weight
+
+
 def bounded_random_step_tf(weights, step_size, bounds):
     new_weight = tf.assign_add(weights, bounds_check_no_mask(weights, tf.random_uniform(weights.shape, -step_size, step_size), bounds))
+    return new_weight
+
+
+def bounded_random_step_calc_tf(weights, step_size, bounds):
+    new_weight = tf.add(weights, bounds_check_no_mask(weights, tf.random_uniform(weights.shape, -step_size, step_size), bounds))
     return new_weight
 
 
@@ -31,6 +41,15 @@ def progressive_random_step_tf(weights, mask, step_size, bounds):
     with tf.control_dependencies([mask_op]):
         weights_op = tf.assign_add(weights, random_steps * mask)
     return weights_op
+
+
+def progressive_random_step_calc_tf(weights, mask, step_size, bounds):
+    random_steps = tf.random_uniform(weights.shape, 0, step_size)
+    #random_steps = tf.Print(random_steps, [random_steps], message="random_steps: ")
+    masked_steps = random_steps * mask
+    steps = bounds_check_no_mask(weights, masked_steps, bounds)
+    #steps = tf.Print(steps, [steps], message="steps: ")
+    return steps
 
 
 def progressive_manhattan_random_step_tf(weights, mask, step_size, bounds):
@@ -70,8 +89,10 @@ def reinit_progressive_mask_tf(mask):
 def bounds_check_no_mask(inputs, step, bounds):
     new_inputs = inputs + step
     over_bounds = tf.abs(new_inputs) > bounds
-    over_bounds = tf.Print(over_bounds, [over_bounds], message="over bounds: ")
+    #over_bounds = tf.Print(over_bounds, [over_bounds], message="over bounds: ")
+    #step = tf.Print(step, [step], message="old step: ")
     new_step = step * tf.cast((1 + (-2) * tf.cast(over_bounds, dtype=tf.int32)), dtype=tf.float32)
+    #new_step = tf.Print(new_step, [new_step], message="new step: ")
     return new_step
 
 def bounds_check(inputs, mask, step, bounds):

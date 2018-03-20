@@ -19,13 +19,13 @@ def get_data():
     return X_data, Y_data
 
 # Sampling parameters
-num_steps = 200    # FEM: 1000 steps; Neutrality: # steps proportionate to step size/search space
+num_steps = 1000    # FEM: 1000 steps; Neutrality: # steps proportionate to step size/search space
 macro = True                                       # try micro and macro for all
 bounds = 1                                          # Also try: 0.5, 1                                      # try micro and macro for all
-step_size = 0.3
+step_size = 0.3 # NOT USED
 
-num_walks = 9   # make it equal to num weights (i.e. dimension)
-num_sims = 2   # 30 independent runs: for stats
+num_walks = 10   # make it equal to num weights (i.e. dimension)
+num_sims = 10   # 30 independent runs: for stats
 
 # Network Parameters
 n_hidden_1 = 2 # 1st layer number of neurons
@@ -36,8 +36,8 @@ num_classes = 1 # 1 bit
 nn_model = FLANeuralNetwork(num_input=num_input, num_classes=num_classes, num_hidden=[n_hidden_1],
                             act_fn=tf.nn.sigmoid, out_act_fn=tf.nn.sigmoid)
 #nn_model.build_random_walk_graph(walk_type="progressive", step_size=step_size, bounds=bounds)
-mgen = MetricGenerator(nn_model, get_data, "progressive", num_steps, num_walks, num_sims, bounds,
-                       macro=True, print_to_screen=True)
+mgen = MetricGenerator(nn_model, get_data, "gradient", num_steps, num_walks, num_sims, bounds,
+                       macro=False, print_to_screen=True)
 
 config = tf.ConfigProto(allow_soft_placement=True)
 config.gpu_options.allow_growth = True

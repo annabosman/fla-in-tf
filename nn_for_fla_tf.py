@@ -19,6 +19,7 @@ def get_random_mask(scope, shape):
                                 initializer=tf.ones_initializer())
     return mask
 
+
 def dense_linear_layer(inputs, layer_name, input_size, output_size):
     """
     Builds a layer that takes a batch of inputs of size `input_size` and returns
@@ -53,6 +54,52 @@ def dense_linear_layer(inputs, layer_name, input_size, output_size):
     return outputs, layer_weights, layer_bias
 
 
+# Compute, but do not assign. Work with tensors, not variables.
+def dense_linear_layer_symbolic(inputs, layer_weights, layer_bias):
+    outputs = tf.nn.xw_plus_b(inputs, layer_weights, layer_bias)
+    return outputs
+
+
+# Compute, but do not assign. Work with tensors, not variables.
+def neural_net_symbolic(x, all_weights, hidden_act_fn, out_act_fn):
+    prev_layer = x
+    for i in range(0, len(all_weights)):
+        layer = tf.nn.xw_plus_b(prev_layer, all_weights[2*i], all_weights[2*i + 1])
+        if i < len(all_weights) - 1:
+            layer = hidden_act_fn(layer)  # Making it non-linear
+        else:
+            layer = out_act_fn(layer)
+        prev_layer = layer
+
+    # Output fully connected layer with a neuron for each class
+    return prev_layer
+
+
+def cross_entropy_symbolic(logits, y, act_fn):
+    ce_op = None
+    if act_fn == tf.nn.sigmoid:
+        ce_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits, y))
+    elif act_fn == tf.nn.softmax:
+        ce_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits, y))
+    return ce_op
+
+
+def mse_symbolic(pred, y):
+    mse_op = tf.reduce_mean(tf.square(pred - y))
+    return mse_op
+
+
+def accuracy_symbolic(pred, y, num_classes):
+    if num_classes == 1:
+        correct_pred = tf.equal(tf.floor(pred + 0.5), y)
+        accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+        return accuracy
+    else:
+        correct_pred = tf.equal(tf.argmax(pred, 1), tf.argmax(y, 1))
+        accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+        return accuracy
+
+
 class FLANeuralNetwork(object):
     def __init__(self, num_input=1, num_hidden=[], num_classes=1, act_fn=tf.nn.sigmoid, out_act_fn=tf.nn.sigmoid,
                  implicit_loop = False):
@@ -72,14 +119,14 @@ class FLANeuralNetwork(object):
             self.build_model() ### Otherwise, build the model inside while_loop
 
     def build_model(self):
-        self.logits = self.neural_net(self.X)
+        self.logits = self.neural_net()
         self.prediction = self.out_act_fn(self.logits)
         self.ce_op = self.cross_entropy()
         self.mse_op = self.mse()
         self.acc_op = self.accuracy()
 
     # Create model
-    def neural_net(self, x):
+    def neural_net(self):
         prev_layer = self.X
         prev_size = self.num_input
         for layer_num, size in enumerate(self.num_hidden):
@@ -149,9 +196,41 @@ class FLANeuralNetwork(object):
                 # self.all_masks.append(mask)
                 self.weight_upd_ops.append(rs.progressive_manhattan_random_step_tf(w, mask, step_size, bounds))
                 self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
+        elif self.walk_type == "gradient":
+            for w in self.all_weights:
+                mask = get_random_mask(w.name[:len(w.name)-2], w.shape)#rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
+                self.mask_init_ops.append(rs.reinit_progressive_mask_tf(mask))
+                self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
+
+            gradients = tf.gradients(ys=self.mse(), xs=self.all_weights)
+            for g, w in zip(gradients, self.all_weights):
+                new_step = self.convert_to_random_step(w, g, step_size, bounds)
+                self.weight_upd_ops.append(tf.assign_add(w, new_step))
+
+
+            #opt = tf.train.GradientDescentOptimizer(learning_rate=1)
+            #gradients = opt.compute_gradients(self.mse(), self.all_weights)
+
+            #randomised_grads = [(rs.bounds_check_no_mask(v, (g + tf.random_uniform(g.shape, 0.01, 0.1)), bounds), v)
+            #                    for g, v in gradients]
+
+            #randomised_grads = [(self.convert_to_random_step(v, g, step_size, bounds), v) for g, v in gradients]
+            #self.weight_upd_ops.append(opt.apply_gradients(randomised_grads))
+
+
+    def convert_to_random_step(self, inputs, grad, step_size, bounds):
+        is_positive = grad > 0
+        new_mask = tf.cast((1 + (-2) * tf.cast(is_positive, dtype=tf.int32)), dtype=tf.float32)
+        # Now, the gradient vector has been interpreted as "direction", and reversed (follow negative gradient!).
+        step = rs.progressive_random_step_calc_tf(inputs, new_mask, step_size, bounds)
+        return step
+
+    def grad_debug(self, g):
+        g = tf.Print(g,[g],'G: ')
+        return g
 
     def body(self, i, out_array):
-        self.logits = self.neural_net(self.X)
+        self.logits = self.neural_net()
         self.prediction = self.out_act_fn(self.logits)
         ce_op = self.cross_entropy()
         mse_op = self.mse()
@@ -227,6 +306,10 @@ class FLANeuralNetwork(object):
                 elif self.walk_type == "manhattan":
                     i = np.random.randint(0, len(weight_upd_ops), 1)
                     sess.run(self.weight_upd_ops[i])
+                elif self.walk_type == "gradient":
+                    sess.run(self.weight_upd_ops, feed_dict={self.X: batch_x, self.Y: batch_y})
+                    #print(sess.run(self.all_weights[0]))
+
                 error_history_py[step] = [ce, mse, acc]
             if print_to_screen is True:
                 print("Done with walk number ", walk_counter+1)

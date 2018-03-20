@@ -2,8 +2,8 @@
 
 rm iris_fem_progress.txt
 
-for BOUNDS_SH in 0.5 1 5; do
-    for MACRO_SH in False; do
+for BOUNDS_SH in 1 5; do
+    for MACRO_SH in True; do
         for ACTIVATION_SH in sigmoid tanh relu; do
             echo "Bounds: " ${BOUNDS_SH}  ", Macro: " ${MACRO_SH} ", Activation: " ${ACTIVATION_SH}
             echo "Bounds: " ${BOUNDS_SH}  ", Macro: " ${MACRO_SH} ", Activation: " ${ACTIVATION_SH} >> iris_fem_progress.txt
