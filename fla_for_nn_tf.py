@@ -28,11 +28,79 @@ class MetricGenerator:
         self.nn_model.build_random_walk_graph(self.walk_type, self.step_size, self.bounds)
         self.print_to_screen = print_to_screen
 
+    def do_the_walks(self, sess):
+        all_w, all_p = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+        return all_w, all_p
+
+    def get_neutrality_and_ruggedness_metrics_only(self, filename_header, sess):
+        m_list = np.empty((self.num_sims, 2, 3))
+        fem_list = np.empty((self.num_sims, 3))
+        for i in range(0, self.num_sims):
+            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+
+            m1, m2 = fla.calc_ms(all_w)
+            if self.print_to_screen is True:
+                print("Avg M1: ", m1)
+                print("Avg M2: ", m2)
+            m_list[i][0] = m1
+            m_list[i][1] = m2
+
+            fem = fla.calc_fem(all_w)
+            if self.print_to_screen is True:
+                print("Avg FEM: ", fem)
+            fem_list[i] = fem
+
+            print("----------------------- Sim ", i + 1, " is done -------------------------------")
+
+        if self.print_to_screen is True:
+            print("FEM across sims: ", fem_list)
+
+        filename1 = filename_header + "_fem"
+        if self.macro is True:
+            filename1 = filename1 + "_macro_"
+        else:
+            filename1 = filename1 + "_micro_"
+        filename1 = filename1 + self.nn_model.get_hidden_act()
+        filename1 = filename1 + "_" + str(self.bounds) + ".csv"
+
+        with open(filename1, "a") as f:
+            np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+            np.savetxt(f, fem_list, delimiter=",")
+
+        if self.print_to_screen is True:
+            print("M1/M2 across sims: ", m_list)
+
+        filename1 = filename_header + "_m1"
+        if self.macro is True:
+            filename1 = filename1 + "_macro_"
+        else:
+            filename1 = filename1 + "_micro_"
+        filename1 = filename1 + self.nn_model.get_hidden_act()
+        filename1 = filename1 + "_" + str(self.bounds) + ".csv"
+
+        filename2 = filename_header + "_m2"
+        if self.macro is True:
+            filename2 = filename2 + "_macro_"
+        else:
+            filename2 = filename2 + "_micro_"
+        filename2 = filename2 + self.nn_model.get_hidden_act()
+        filename2 = filename2 + "_" + str(self.bounds) + ".csv"
+
+        with open(filename1, "a") as f:
+            np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+            np.savetxt(f, m_list[:, 0, :], delimiter=",")
+
+        with open(filename2, "a") as f:
+            np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
+            np.savetxt(f, m_list[:, 1, :], delimiter=",")
+
+
     def calculate_neutrality_metrics(self, filename_header, sess):
         m_list = np.empty((self.num_sims, 2, 3))
 
         for i in range(0, self.num_sims):
             all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+
             m1, m2 = fla.calc_ms(all_w)
             if self.print_to_screen is True:
                 print("Avg M1: ", m1)

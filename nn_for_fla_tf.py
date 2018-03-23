@@ -183,6 +183,9 @@ class FLANeuralNetwork(object):
         self.init = tf.global_variables_initializer()
         if self.walk_type == "random":
             for w in self.all_weights:
+                mask = get_random_mask(w.name[:len(w.name)-2], w.shape)#rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
+                self.mask_init_ops.append(rs.reinit_progressive_mask_tf(mask))
+                self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
                 self.weight_upd_ops.append(rs.bounded_random_step_tf(w, step_size, bounds))
         if self.walk_type == "progressive":
             for w in self.all_weights:
@@ -206,6 +209,16 @@ class FLANeuralNetwork(object):
             for g, w in zip(gradients, self.all_weights):
                 new_step = self.convert_to_random_step(w, g, step_size, bounds)
                 self.weight_upd_ops.append(tf.assign_add(w, new_step))
+        elif self.walk_type == "unbounded_gradient":
+            for w in self.all_weights:
+                mask = get_random_mask(w.name[:len(w.name)-2], w.shape)#rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
+                self.mask_init_ops.append(rs.reinit_progressive_mask_tf(mask))
+                self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
+
+            gradients = tf.gradients(ys=self.mse(), xs=self.all_weights)
+            for g, w in zip(gradients, self.all_weights):
+                new_step = self.convert_to_unbounded_random_step(w, g, step_size)
+                self.weight_upd_ops.append(tf.assign_add(w, new_step))
 
 
             #opt = tf.train.GradientDescentOptimizer(learning_rate=1)
@@ -223,6 +236,13 @@ class FLANeuralNetwork(object):
         new_mask = tf.cast((1 + (-2) * tf.cast(is_positive, dtype=tf.int32)), dtype=tf.float32)
         # Now, the gradient vector has been interpreted as "direction", and reversed (follow negative gradient!).
         step = rs.progressive_random_step_calc_tf(inputs, new_mask, step_size, bounds)
+        return step
+
+    def convert_to_unbounded_random_step(self, inputs, grad, step_size):
+        is_positive = grad > 0
+        new_mask = tf.cast((1 + (-2) * tf.cast(is_positive, dtype=tf.int32)), dtype=tf.float32)
+        # Now, the gradient vector has been interpreted as "direction", and reversed (follow negative gradient!).
+        step = rs.unbounded_progressive_random_step_calc_tf(inputs, new_mask, step_size)
         return step
 
     def grad_debug(self, g):
@@ -284,8 +304,63 @@ class FLANeuralNetwork(object):
     #     self.mse_op = self.mse()
     #     self.acc_op = self.accuracy()
 
+    def one_sim_pos(self, sess, num_walks, num_steps, data_generator, print_to_screen=False):
+        all_walks = np.empty((num_walks, num_steps, 3))
+        all_walks_pos = np.empty((num_walks, num_steps, self.all_weights[0].shape[0] * self.all_weights[0].shape[1]
+                        + self.all_weights[1].shape[0] + self.all_weights[2].shape[0] * self.all_weights[2].shape[1]
+                        + self.all_weights[3].shape[0]))
+
+        for walk_counter in range(0, num_walks):
+            error_history_py = np.empty((num_steps, 3))  # dimensions: x -> steps, y -> error metrics
+
+            # FOR PLOTTING
+            print("Dimension fro printing: ", self.all_weights[0].shape[0] * self.all_weights[0].shape[1]
+                  + self.all_weights[1].shape[0])
+            position_history_py = np.empty((num_steps, self.all_weights[0].shape[0] * self.all_weights[0].shape[1]
+                  + self.all_weights[1].shape[0] + self.all_weights[2].shape[0] * self.all_weights[2].shape[1]
+                  + self.all_weights[3].shape[0]))
+
+            sess.run(self.init) # initialise all weights/masks
+            sess.run(self.mask_init_ops)
+            sess.run(self.weight_init_ops)
+            for step in range(0, num_steps):
+                batch_x, batch_y = data_generator() ########## Provide correct generator from outside
+                # Calculate batch loss and accuracy
+                ce, mse, acc = sess.run([self.ce_op, self.mse_op, self.acc_op], feed_dict={self.X: batch_x, self.Y: batch_y})
+                if step % (num_steps/10) == 0 and print_to_screen is True:
+                    print("Step " + str(step) + ", Cross-entropy Loss = " + \
+                          "{:.4f}".format(ce) + ", MSE Loss = " + \
+                          "{:.4f}".format(mse) + ", Training Accuracy = " + \
+                          "{:.3f}".format(acc))
+                if self.walk_type == "random" or self.walk_type == "progressive":
+                    sess.run(self.weight_upd_ops)
+                elif self.walk_type == "manhattan":
+                    i = np.random.randint(0, len(weight_upd_ops), 1)
+                    sess.run(self.weight_upd_ops[i])
+                elif self.walk_type == "gradient" or self.walk_type == "unbounded_gradient":
+                    sess.run(self.weight_upd_ops, feed_dict={self.X: batch_x, self.Y: batch_y})
+
+                weight_matrix_1 = sess.run(self.all_weights[0])
+                weight_matrix_2 = sess.run(self.all_weights[1])
+                weight_matrix_3 = sess.run(self.all_weights[2])
+                weight_matrix_4 = sess.run(self.all_weights[3])
+                plot_weights = np.concatenate((weight_matrix_1.ravel(), weight_matrix_2, weight_matrix_3.ravel(), weight_matrix_4))
+                #print(plot_weights)
+                error_history_py[step] = [ce, mse, acc]
+                position_history_py[step] = plot_weights
+            if print_to_screen is True:
+                print("Done with walk number ", walk_counter+1)
+            all_walks[walk_counter] = error_history_py
+            all_walks_pos[walk_counter] = position_history_py
+
+        if print_to_screen is True:
+            print("All random walks are done now.")
+
+        return all_walks, all_walks_pos
+
     def one_sim(self, sess, num_walks, num_steps, data_generator, print_to_screen=False):
         all_walks = np.empty((num_walks, num_steps, 3))
+
         for walk_counter in range(0, num_walks):
             error_history_py = np.empty((num_steps, 3))  # dimensions: x -> steps, y -> error metrics
 
@@ -306,9 +381,8 @@ class FLANeuralNetwork(object):
                 elif self.walk_type == "manhattan":
                     i = np.random.randint(0, len(weight_upd_ops), 1)
                     sess.run(self.weight_upd_ops[i])
-                elif self.walk_type == "gradient":
+                elif self.walk_type == "gradient" or self.walk_type == "unbounded_gradient":
                     sess.run(self.weight_upd_ops, feed_dict={self.X: batch_x, self.Y: batch_y})
-                    #print(sess.run(self.all_weights[0]))
 
                 error_history_py[step] = [ce, mse, acc]
             if print_to_screen is True:

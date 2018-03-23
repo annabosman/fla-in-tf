@@ -52,6 +52,14 @@ def progressive_random_step_calc_tf(weights, mask, step_size, bounds):
     return steps
 
 
+def unbounded_progressive_random_step_calc_tf(weights, mask, step_size):
+    random_steps = tf.random_uniform(weights.shape, 0, step_size)
+    #random_steps = tf.Print(random_steps, [random_steps], message="random_steps: ")
+    masked_steps = random_steps * mask
+    #steps = tf.Print(steps, [steps], message="steps: ")
+    return masked_steps
+
+
 def progressive_manhattan_random_step_tf(weights, mask, step_size, bounds):
     random_steps = tf.zeros(weights.shape)
     shape = weights.shape
@@ -124,7 +132,7 @@ if __name__ == '__main__':
     np.random.seed(123)
     tf.set_random_seed(123)
     current_pos = tf.zeros(2) # test
-    my_step = tf.constant(0.3, dtype=tf.float32)
+    my_step = tf.constant(0.1, dtype=tf.float32)
     my_bounds = tf.constant(1, dtype=tf.float32)
 
     mask = progressive_mask_tf("my_mask", current_pos.shape)         # Variable: mask
@@ -178,7 +186,7 @@ if __name__ == '__main__':
 
         sess.run(init) # re-init
         walk = np.array([sess.run(current_pos)])
-        for i in range(10):
+        for i in range(100):
             step = sess.run(bounded_random_step_op)
             walk = np.append(walk, [sess.run(current_pos)], axis=0)
         print("Bounded random walk: ", walk)
@@ -188,6 +196,9 @@ if __name__ == '__main__':
 
         plt.scatter(walk[:, 0], walk[:, 1])
         plt.plot(walk[:, 0], walk[:, 1])
-
+        plt.xlabel('x1')
+        plt.ylabel('x2')
+        plt.xlim(-1,1)
+        plt.ylim(-1,1)
         # plt.axis('equal')
         plt.show()
