@@ -28,13 +28,13 @@ step_size = 0
 if macro is True: step_size = (2 * bounds) * 0.1    # 10% of the search space
 else: step_size = (2 * bounds) * 0.01               # 1% of the search space
 
-num_walks = 9   # make it equal to num weights (i.e. dimension)
-num_sims = 2   # 30 independent runs: for stats
+num_walks = 1   # make it equal to num weights (i.e. dimension)
+num_sims = 1   # 30 independent runs: for stats
 
 # Network Parameters
-n_hidden_1 = 2 # 1st layer number of neurons
-#n_hidden_2 = 256 # 2nd layer number of neurons
 num_input = 2 # two bits
+n_hidden_1 = 3 # 1st layer number of neurons
+#n_hidden_2 = 256 # 2nd layer number of neurons
 num_classes = 1 # 1 bit
 
 # tf Graph input: data input (X) and output (Y)
@@ -92,6 +92,15 @@ cross_entropy_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
     logits=logits, labels=Y))
 mse_op = tf.reduce_mean(tf.square(prediction - Y))
 
+# Define gradient, hessian:
+gradients = tf.gradients(mse_op, [weights['h1'], weights['b1'], weights['out'], weights['b3']])
+hessians = tf.hessians(mse_op, [weights['h1'], weights['b1'], weights['out'], weights['b3']])
+
+eigenvals1 = tf.self_adjoint_eigvals(tf.reshape(hessians[0], [tf.size(weights['h1']), tf.size(weights['h1'])]))
+eigenvals2 = tf.self_adjoint_eigvals(tf.reshape(hessians[1], [tf.size(weights['b1']), tf.size(weights['b1'])]))
+eigenvals3 = tf.self_adjoint_eigvals(tf.reshape(hessians[2], [tf.size(weights['out']), tf.size(weights['out'])]))
+eigenvals4 = tf.self_adjoint_eigvals(tf.reshape(hessians[3], [tf.size(weights['b3']), tf.size(weights['b3'])]))
+
 # Evaluate model
 correct_pred = tf.equal(tf.floor(prediction+0.5), Y)
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
@@ -121,16 +130,19 @@ def one_sim(sess):
 
         for step in range(0, num_steps):
             # Calculate batch loss and accuracy
-            ce, mse, acc = sess.run([cross_entropy_op, mse_op, accuracy], feed_dict={X: X_data, Y: Y_data})
+            ce, mse, acc, grads, hess, eigens = sess.run([cross_entropy_op, mse_op, accuracy, gradients, hessians, eigenvals1], feed_dict={X: X_data, Y: Y_data})
             if step % display_step == 0:
                 print("Step " + str(step) + ", Cross-entropy Loss = " + \
                       "{:.4f}".format(ce) + ", MSE Loss = " + \
                       "{:.4f}".format(mse) + ", Training Accuracy = " + \
                       "{:.3f}".format(acc))
+               # print("Grads shape: " + str(grads))
+                #print("Hessians shape: " + str(hess))
+                print("Eigens: " + str(eigens))
+            # And now: update the weight variables!
             all_weights, start = rs.progressive_random_step_tf(all_weights, start, step_size, bounds)
             assign_upd_weights(sess, current_weights, all_weights)
 
-            # And now: update the weight variables!
             error_history_py[step] = [ce, mse, acc]
         print("Done with walk number ", walk_counter)
         all_walks[walk_counter] = error_history_py

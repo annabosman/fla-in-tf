@@ -74,8 +74,8 @@ macro = True                                       # try micro and macro for all
 bounds = 10                                          # Also try: 0.5, 1                                      # try micro and macro for all
 step_size = 0.3 # NOT USED
 
-num_walks = 100   # make it equal to num weights (i.e. dimension)
-num_sims = 30   # 30 independent runs: for stats
+num_walks = 10   # make it equal to num weights (i.e. dimension)
+num_sims = 1   # 30 independent runs: for stats
 
 # Network Parameters
 n_hidden_1 = 2 # 1st layer number of neurons
@@ -87,8 +87,8 @@ nn_model = FLANeuralNetwork(num_input=num_input, num_classes=num_classes, num_hi
                             act_fn=tf.nn.sigmoid, out_act_fn=tf.nn.sigmoid)
 #nn_model.build_random_walk_graph(walk_type="progressive", step_size=step_size, bounds=bounds)
 macro = False
-mgen = MetricGenerator(nn_model, get_data, "gradient", num_steps, num_walks, num_sims, bounds,
-                       macro=macro, print_to_screen=False)
+mgen = MetricGenerator(nn_model, get_data, "unbounded_gradient", num_steps, num_walks, num_sims, bounds,
+                       macro=macro, print_to_screen=True)
 
 config = tf.ConfigProto(allow_soft_placement=True)
 config.gpu_options.allow_growth = True
@@ -97,9 +97,9 @@ init = tf.global_variables_initializer()
 with tf.Session(config=config) as sess:
     tf.get_default_graph().finalize()
     sess.run(init)
-    mgen.get_neutrality_and_ruggedness_metrics_only(sess=sess, filename_header="data/output/xor/gecco/xor_gradient")
+    #mgen.get_neutrality_and_ruggedness_metrics_only(sess=sess, filename_header="data/output/xor/gecco/xor_gradient")
     #mgen.calculate_ruggedness_metrics(sess=sess, filename_header="data/output/xor/TEST_xor")
-    #all_w, all_p = mgen.do_the_walks(sess=sess)
+    all_w = mgen.do_the_walks(sess=sess)
     #plot_scatter(all_p)
     #coverage_hist(all_p)
 

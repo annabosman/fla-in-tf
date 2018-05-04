@@ -102,7 +102,7 @@ def accuracy_symbolic(pred, y, num_classes):
 
 class FLANeuralNetwork(object):
     def __init__(self, num_input=1, num_hidden=[], num_classes=1, act_fn=tf.nn.sigmoid, out_act_fn=tf.nn.sigmoid,
-                 implicit_loop = False):
+                 compute_eigens=False, implicit_loop=False):
         self.num_input = num_input
         self.num_classes = num_classes
         self.num_hidden = num_hidden  # list of hidden weight layers
@@ -117,6 +117,9 @@ class FLANeuralNetwork(object):
         self.all_weights = []
         if not implicit_loop:
             self.build_model() ### Otherwise, build the model inside while_loop
+        self.compute_eigens = compute_eigens
+        if compute_eigens:
+            self.eigenvalues = self.calc_hess_eigens()
 
     def build_model(self):
         self.logits = self.neural_net()
@@ -209,6 +212,7 @@ class FLANeuralNetwork(object):
             for g, w in zip(gradients, self.all_weights):
                 new_step = self.convert_to_random_step(w, g, step_size, bounds)
                 self.weight_upd_ops.append(tf.assign_add(w, new_step))
+
         elif self.walk_type == "unbounded_gradient":
             for w in self.all_weights:
                 mask = get_random_mask(w.name[:len(w.name)-2], w.shape)#rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
@@ -220,7 +224,6 @@ class FLANeuralNetwork(object):
                 new_step = self.convert_to_unbounded_random_step(w, g, step_size)
                 self.weight_upd_ops.append(tf.assign_add(w, new_step))
 
-
             #opt = tf.train.GradientDescentOptimizer(learning_rate=1)
             #gradients = opt.compute_gradients(self.mse(), self.all_weights)
 
@@ -230,6 +233,13 @@ class FLANeuralNetwork(object):
             #randomised_grads = [(self.convert_to_random_step(v, g, step_size, bounds), v) for g, v in gradients]
             #self.weight_upd_ops.append(opt.apply_gradients(randomised_grads))
 
+    # Calculate the hessian eigenvalues
+    def calc_hess_eigens(self):
+        eigens = []
+        hessians = tf.hessians(ys=self.mse(), xs=self.all_weights)
+        for h, w in zip(hessians, self.all_weights):
+            eigens.append(tf.self_adjoint_eigvals(tf.reshape(h, [tf.size(w), tf.size(w)])))
+        return eigens
 
     def convert_to_random_step(self, inputs, grad, step_size, bounds):
         is_positive = grad > 0
@@ -239,9 +249,17 @@ class FLANeuralNetwork(object):
         return step
 
     def convert_to_unbounded_random_step(self, inputs, grad, step_size):
+        #nonzero = tf.count_nonzero(grad)
+        #nonzero = tf.Print(nonzero, [nonzero], message="non-zero count: ")
+
+        #grad = self.grad_debug(grad)
+
         is_positive = grad > 0
         new_mask = tf.cast((1 + (-2) * tf.cast(is_positive, dtype=tf.int32)), dtype=tf.float32)
+        #nonzero = tf.count_nonzero(grad)
+        #nonzero = self.grad_debug(nonzero)
         # Now, the gradient vector has been interpreted as "direction", and reversed (follow negative gradient!).
+        #with tf.control_dependencies([nonzero]):
         step = rs.unbounded_progressive_random_step_calc_tf(inputs, new_mask, step_size)
         return step
 
@@ -370,12 +388,20 @@ class FLANeuralNetwork(object):
             for step in range(0, num_steps):
                 batch_x, batch_y = data_generator() ########## Provide correct generator from outside
                 # Calculate batch loss and accuracy
-                ce, mse, acc = sess.run([self.ce_op, self.mse_op, self.acc_op], feed_dict={self.X: batch_x, self.Y: batch_y})
+                if self.compute_eigens:
+                    ce, mse, acc, eigenvalues = sess.run([self.ce_op, self.mse_op, self.acc_op, self.eigenvalues],
+                                                         feed_dict={self.X: batch_x, self.Y: batch_y})
+                else:
+                    ce, mse, acc = sess.run([self.ce_op, self.mse_op, self.acc_op],
+                                            feed_dict={self.X: batch_x, self.Y: batch_y})
+
                 if step % (num_steps/10) == 0 and print_to_screen is True:
-                    print("Step " + str(step) + ", Cross-entropy Loss = " + \
-                          "{:.4f}".format(ce) + ", MSE Loss = " + \
-                          "{:.4f}".format(mse) + ", Training Accuracy = " + \
+                    print("Step " + str(step) + ", Cross-entropy Loss = " +
+                          "{:.4f}".format(ce) + ", MSE Loss = " +
+                          "{:.4f}".format(mse) + ", Training Accuracy = " +
                           "{:.3f}".format(acc))
+                    if self.compute_eigens:
+                        print("Eigenvalues: " + str(eigenvalues))
                 if self.walk_type == "random" or self.walk_type == "progressive":
                     sess.run(self.weight_upd_ops)
                 elif self.walk_type == "manhattan":

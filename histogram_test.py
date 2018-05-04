@@ -1,7 +1,16 @@
+import matplotlib as mp
+mp.use('PS')
 import matplotlib.pyplot as plt
 import numpy as np
 from cycler import cycler
 import pandas as pd
+
+mp.rcParams['ps.useafm'] = True
+mp.rcParams['pdf.use14corefonts'] = True
+mp.rcParams['text.usetex'] = True
+mp.rcParams['hatch.linewidth'] = 1.5
+mp.rcParams['hatch.linewidth'] = 1.5
+mp.rcParams.update({'font.size': 12})
 
 data = [0.5,0.5,0.5,0.25,0.75,0.75]
 other_data = [0.5,0.5,0.5,0.25,0.75,0.75,0.75,0.75,0.25]
@@ -65,14 +74,14 @@ grad_unb_macro_means /= sum(grad_unb_macro_means)
 ind = np.arange(N)  # the x locations for the groups
 width = 0.2       # the width of the bars
 
-bar_cycle = (cycler('hatch', ['///', '...', 'xxx', '\\\\', '\///', '--']) * cycler('color', 'w')*cycler('zorder', [10]))
+bar_cycle = (cycler('hatch', ['///', '...', 'xxx', '\\\\']) + cycler('color', ['c', 'r', 'y', 'm']) *cycler('zorder', [10]))
 styles = bar_cycle()
 
 fig, ax = plt.subplots()
-rects1 = ax.bar(ind - width - width/2, rand_micro_means, width, linewidth=1.0, edgecolor='black', **next(styles))
-rects2 = ax.bar(ind - width/2, prog_micro_means, width, linewidth=1.0, edgecolor='black', **next(styles))
-rects3 = ax.bar(ind + width/2, grad_micro_means, width, linewidth=1.0, edgecolor='black', **next(styles))
-rects4 = ax.bar(ind + width + width/2, grad_unb_micro_means, width, linewidth=1.0, edgecolor='black', **next(styles))
+rects1 = ax.bar(ind - width - width/2, rand_micro_means, width, linewidth=1.5, edgecolor='black', **next(styles))
+rects2 = ax.bar(ind - width/2, prog_micro_means, width, linewidth=1.5, edgecolor='black', **next(styles))
+rects3 = ax.bar(ind + width/2, grad_micro_means, width, linewidth=1.5, edgecolor='black', **next(styles))
+rects4 = ax.bar(ind + width + width/2, grad_unb_micro_means, width, linewidth=1.5, edgecolor='black', **next(styles))
 
 # add some text for labels, title and axes ticks
 # ax.set_ylabel('Proportion')
@@ -82,4 +91,5 @@ ax.set_xticklabels(('0.0', '0.25', '0.5', '0.75', '1.0'))
 
 ax.legend((rects1[0], rects2[0], rects3[0], rects4[0]), ('Random', 'Progressive', 'Gradient', 'Unbounded Gradient'))
 
+plt.savefig('test.pdf', dpi=600)
 plt.show()

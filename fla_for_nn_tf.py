@@ -29,8 +29,8 @@ class MetricGenerator:
         self.print_to_screen = print_to_screen
 
     def do_the_walks(self, sess):
-        all_w, all_p = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
-        return all_w, all_p
+        all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+        return all_w
 
     def get_neutrality_and_ruggedness_metrics_only(self, filename_header, sess):
         m_list = np.empty((self.num_sims, 2, 3))
@@ -93,7 +93,6 @@ class MetricGenerator:
         with open(filename2, "a") as f:
             np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
             np.savetxt(f, m_list[:, 1, :], delimiter=",")
-
 
     def calculate_neutrality_metrics(self, filename_header, sess):
         m_list = np.empty((self.num_sims, 2, 3))
