@@ -28,9 +28,33 @@ class MetricGenerator:
         self.nn_model.build_random_walk_graph(self.walk_type, self.step_size, self.bounds)
         self.print_to_screen = print_to_screen
 
+    # Return all walks performed for each simulation
+    def do_the_sims(self, sess):
+        all_sims = []
+        for i in range(0, self.num_sims):
+            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+            all_sims.append(all_w)
+        return all_sims
+
+    # Return all walks performed for a single simulation
     def do_the_walks(self, sess):
         all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
         return all_w
+
+    def write_walks_to_file_sequentially(self, filename_header, sess):
+        all_w, header = self.do_the_walks(sess)
+        all_w = np.reshape(all_w, [all_w.shape[0] * all_w.shape[1], all_w.shape[2]])
+
+        if self.macro is True:
+            filename = filename_header + "_macro_"
+        else:
+            filename = filename_header + "_micro_"
+        filename = filename + self.nn_model.get_hidden_act()
+        filename = filename + "_" + str(self.bounds) + ".csv"
+        with open(filename, "w") as f:
+            np.savetxt(f, [header], "%s", delimiter=",")
+            np.savetxt(f, all_w, delimiter=",")
+
 
     def get_neutrality_and_ruggedness_metrics_only(self, filename_header, sess):
         m_list = np.empty((self.num_sims, 2, 3))
@@ -63,7 +87,7 @@ class MetricGenerator:
         filename1 = filename1 + self.nn_model.get_hidden_act()
         filename1 = filename1 + "_" + str(self.bounds) + ".csv"
 
-        with open(filename1, "a") as f:
+        with open(filename1, "w") as f:
             np.savetxt(f, ["# (1) cross-entropy", "# (2) mse", "# (3) accuracy"], "%s")
             np.savetxt(f, fem_list, delimiter=",")
 

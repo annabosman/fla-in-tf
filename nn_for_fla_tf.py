@@ -45,7 +45,9 @@ def get_curvature(eigens_vector):
         (tf.less(max_element, 0), ret_concave)
     ], default=ret_default, exclusive=True)
 
-    return comparison
+    #ratio = tf.abs(min_element) / tf.abs(max_element)
+
+    return comparison#, ratio
 
 
 def get_random_mask(scope, shape):
@@ -139,7 +141,7 @@ def accuracy_symbolic(pred, y, num_classes):
 
 class FLANeuralNetwork(object):
     def __init__(self, num_input=1, num_hidden=[], num_classes=1, act_fn=tf.nn.sigmoid, out_act_fn=tf.nn.sigmoid,
-                 compute_eigens=False, implicit_loop=False):
+                 error_function="mse", compute_acuracy=True, compute_eigens=False, implicit_loop=False):
         self.num_input = num_input
         self.num_classes = num_classes
         self.num_hidden = num_hidden  # list of hidden weight layers
@@ -153,19 +155,29 @@ class FLANeuralNetwork(object):
         # Store layers weight & bias
         self.all_weights = []
         if not implicit_loop:
-            self.build_model() ### Otherwise, build the model inside while_loop
+            self.build_model(error_function) ### Otherwise, build the model inside while_loop
         self.compute_eigens = compute_eigens
         if compute_eigens:
             self.eigenvalues, self.curvature = self.calc_hess_eigens()
+        self.compute_accuracy = compute_acuracy
 
-    def build_model(self):
+    def build_model(self, error_function):
         self.logits = self.neural_net()
         self.prediction = self.out_act_fn(self.logits)
+
         self.ce_op = self.cross_entropy()
         self.mse_op = self.mse()
         self.acc_op = self.accuracy()
 
-    # Create model
+        if error_function is "mse":
+            self.error = self.mse_op
+        elif error_function is "ce":
+            self.error = self.ce_op
+        else:
+            raise ValueError('Invalid error function provided. Use either "mse" or "ce" code.')
+
+
+            # Create model
     def neural_net(self):
         prev_layer = self.X
         prev_size = self.num_input
@@ -244,7 +256,7 @@ class FLANeuralNetwork(object):
                 self.mask_init_ops.append(rs.reinit_progressive_mask_tf(mask))
                 self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
 
-            self.gradients = tf.gradients(ys=self.mse(), xs=self.all_weights)
+            self.gradients = tf.gradients(ys=self.error, xs=self.all_weights)
             for g, w in zip(self.gradients, self.all_weights):
                 new_step = self.convert_to_random_step(w, g, step_size, bounds)
                 self.weight_upd_ops.append(tf.assign_add(w, new_step))
@@ -255,27 +267,25 @@ class FLANeuralNetwork(object):
                 self.mask_init_ops.append(rs.reinit_progressive_mask_tf(mask))
                 self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
 
-            gradients = tf.gradients(ys=self.mse(), xs=self.all_weights)
+            gradients = tf.gradients(ys=self.error, xs=self.all_weights)
             gradlist = []
             for g, w in zip(gradients, self.all_weights):
                 new_step = self.convert_to_unbounded_random_step(w, g, step_size)
                 self.weight_upd_ops.append(tf.assign_add(w, new_step))
                 gradlist.append(tf.reshape(g, [-1]))
             weight_vector = tf.concat(gradlist, 0)
-            self.grad_norm = tf.norm(weight_vector)
+            # gradient size (this should not _always_ be computed!):
+            if self.compute_eigens:
+                self.grad_norm = tf.norm(weight_vector)
 
 
-        elif self.walk_type == "gd_mse":
-            optimizer = tf.train.GradientDescentOptimizer(learning_rate=step_size).minimize(self.mse_op)
+        elif self.walk_type == "gd":
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate=step_size).minimize(self.error)
             self.weight_upd_ops.append(optimizer)
 
-        elif self.walk_type == "gd_ce":
-            optimizer = tf.train.GradientDescentOptimizer(learning_rate=step_size).minimize(self.ce_op)
-            self.weight_upd_ops.append(optimizer)
-
-        elif self.walk_type == "adam_ce":
+        elif self.walk_type == "adam":
             optimizer = tf.train.AdamOptimizer(learning_rate=step_size)
-            self.weight_upd_ops.append(optimizer.minimize(self.ce_op))
+            self.weight_upd_ops.append(optimizer.minimize(self.error))
 
             #opt = tf.train.GradientDescentOptimizer(learning_rate=1)
             #gradients = opt.compute_gradients(self.mse(), self.all_weights)
@@ -289,7 +299,7 @@ class FLANeuralNetwork(object):
     # Calculate the hessian eigenvalues
     def calc_hess_eigens(self):
         eigens = []
-        hessians = tf.hessians(ys=self.mse(), xs=self.all_weights)
+        hessians = tf.hessians(ys=self.error, xs=self.all_weights)
         for h, w in zip(hessians, self.all_weights):
             eigens.append(tf.reshape(tf.self_adjoint_eigvals(tf.reshape(h, [tf.size(w), tf.size(w)])), [-1]))
         eigens_vector = tf.concat(eigens, 0)
@@ -430,30 +440,60 @@ class FLANeuralNetwork(object):
         return all_walks, all_walks_pos
 
     def one_sim(self, sess, num_walks, num_steps, data_generator, print_to_screen=False):
-        all_walks = np.empty((num_walks, num_steps, 3))
+        # 3rd dimension: number of variables calculated/returned per step.
+        # In case of saddle metrics, need 3: fitness (always put fitness first!), curvature, gradient magnitude
+        # In case of other metrics, all you need is the fitness. 1 parameter.
+        # For debugging and other purpose, will be nice to also record classification error.
+        num_vars = 1
+        if self.compute_eigens: num_vars += 2
+        if self.compute_accuracy: num_vars += 1
+
+        header = []
+        header.append("error")
+        if self.compute_accuracy:
+            header.append("accuracy")
+        if self.compute_eigens:
+            header.append("curvature")
+            header.append("grad_norm")
+
+        all_walks = np.empty((num_walks, num_steps, num_vars))
 
         for walk_counter in range(0, num_walks):
-            error_history_py = np.empty((num_steps, 3))  # dimensions: x -> steps, y -> error metrics
+            error_history_py = np.empty((num_steps, num_vars))  # dimensions: x -> steps, y -> error metrics
 
             sess.run(self.init) # initialise all weights/masks
             sess.run(self.mask_init_ops)
             sess.run(self.weight_init_ops)
             for step in range(0, num_steps):
+                single_step = []
                 batch_x, batch_y = data_generator() ########## Provide correct generator from outside
                 # Calculate batch loss and accuracy
-                if self.compute_eigens:
-                    ce, mse, acc, eigenvalues, curvature, grad_norm = \
-                        sess.run([self.ce_op, self.mse_op, self.acc_op, self.eigenvalues, self.curvature,
+                if self.compute_eigens and self.compute_accuracy:
+                    error, acc, eigenvalues, curvature, grad_norm = \
+                        sess.run([self.error, self.acc_op, self.eigenvalues, self.curvature,
                                   self.grad_norm], feed_dict={self.X: batch_x, self.Y: batch_y})
-                else:
-                    ce, mse, acc = sess.run([self.ce_op, self.mse_op, self.acc_op],
+                elif self.compute_eigens:
+                    error, eigenvalues, curvature, grad_norm = \
+                        sess.run([self.error, self.eigenvalues, self.curvature,
+                                  self.grad_norm], feed_dict={self.X: batch_x, self.Y: batch_y})
+                elif self.compute_accuracy:
+                    error, acc = sess.run([self.error, self.acc_op],
                                             feed_dict={self.X: batch_x, self.Y: batch_y})
+                else:
+                    error = sess.run([self.error], feed_dict={self.X: batch_x, self.Y: batch_y})
+
+                single_step.append(error)
+                if self.compute_accuracy:
+                    single_step.append(acc)
+                if self.compute_eigens:
+                    single_step.append(curvature)
+                    single_step.append(grad_norm)
 
                 if step % (num_steps/10) == 0 and print_to_screen is True:
-                    print("Step " + str(step) + ", Cross-entropy Loss = " +
-                          "{:.4f}".format(ce) + ", MSE Loss = " +
-                          "{:.4f}".format(mse) + ", Training Accuracy = " +
-                          "{:.3f}".format(acc))
+                    print("Step " + str(step) + ", Error = " +
+                          "{:.4f}".format(error))
+                    if self.compute_accuracy:
+                        print("Accuracy: " + str(acc))
                     if self.compute_eigens:
                         print("Eigenvalues: " + str(eigenvalues))
                         print("Curvature: " + str(curvature))
@@ -467,15 +507,16 @@ class FLANeuralNetwork(object):
                         or self.walk_type == "adam_ce" or self.walk_type == "gd_ce":
                     sess.run(self.weight_upd_ops, feed_dict={self.X: batch_x, self.Y: batch_y})
 
-                error_history_py[step] = [ce, mse, acc]
+                error_history_py[step] = single_step #[ce, mse, acc]
             if print_to_screen is True:
                 print("Done with walk number ", walk_counter+1)
+            print("Done with walk number ", walk_counter + 1)
             all_walks[walk_counter] = error_history_py
 
         if print_to_screen is True:
             print("All random walks are done now.")
 
-        return all_walks
+        return all_walks, header
 
 if __name__ == '__main__':
     a = tf.placeholder(dtype=tf.float64, shape=[6])
@@ -490,8 +531,18 @@ if __name__ == '__main__':
         r4 = sess.run(b, feed_dict={a: [-1,-1,-1,-2,-3,-5]})
         r5 = sess.run(b, feed_dict={a: [1,-7,-1,2,3,5]})
 
-        if(r1 == Curvature.undefined): print("Correctly identified flat + positive")
-        if(r2 == Curvature.convex): print("Correctly identified convexity")
-        if(r3 == Curvature.undefined): print("Correctly identified flat + positive + negative")
-        if(r4 == Curvature.concave): print("Correctly identified concavity")
-        if(r5 == Curvature.saddle): print("Correctly identified saddle")
+        if(r1 == Curvature.undefined):
+            print("Correctly identified flat + positive")
+            #print("Ratio is ", str(r1r))
+        if(r2 == Curvature.convex):
+            print("Correctly identified convexity")
+            #print("Ratio is ", str(r2r))
+        if(r3 == Curvature.undefined):
+            print("Correctly identified flat + positive + negative")
+            #print("Ratio is ", str(r3r))
+        if(r4 == Curvature.concave):
+            print("Correctly identified concavity")
+            #print("Ratio is ", str(r4r))
+        if(r5 == Curvature.saddle):
+            print("Correctly identified saddle")
+            #print("Ratio is ", str(r5r))
