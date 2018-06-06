@@ -45,16 +45,18 @@ class MetricGenerator:
         all_w, header = self.do_the_walks(sess)
         all_w = np.reshape(all_w, [all_w.shape[0] * all_w.shape[1], all_w.shape[2]])
 
+        filename = filename_header + "_" + self.nn_model.get_error_descr()
         if self.macro is True:
-            filename = filename_header + "_macro_"
+            filename += "_macro_"
         else:
-            filename = filename_header + "_micro_"
+            filename += "_micro_"
         filename = filename + self.nn_model.get_hidden_act()
-        filename = filename + "_" + str(self.bounds) + ".csv"
+        filename = filename + "_" + self.nn_model.get_output_act()
+        filename = filename + "_b" + str(self.bounds)
+        filename = filename + "_s" + str(self.num_steps) + ".csv"
         with open(filename, "w") as f:
             np.savetxt(f, [header], "%s", delimiter=",")
             np.savetxt(f, all_w, delimiter=",")
-
 
     def get_neutrality_and_ruggedness_metrics_only(self, filename_header, sess):
         m_list = np.empty((self.num_sims, 2, 3))

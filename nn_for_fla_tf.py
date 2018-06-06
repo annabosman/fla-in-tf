@@ -10,8 +10,9 @@ import tensorflow as tf
 import numpy as np
 import random_samplers_tf as rs
 
+
 class Curvature:
-    convex, concave, saddle, undefined = range(1, 5)
+    convex, concave, saddle, singular = range(1, 5)
 
 
 def get_curvature(eigens_vector):
@@ -48,6 +49,17 @@ def get_curvature(eigens_vector):
     #ratio = tf.abs(min_element) / tf.abs(max_element)
 
     return comparison#, ratio
+
+
+# Get dimensionality of a NN
+def get_dimensionality(input, hidden, output):
+    total = 0
+    previous = input
+    for i in hidden:
+        total += (previous + 1) * i
+        previous = i
+    total += (previous + 1) * output
+    return total
 
 
 def get_random_mask(scope, shape):
@@ -165,13 +177,14 @@ class FLANeuralNetwork(object):
         self.logits = self.neural_net()
         self.prediction = self.out_act_fn(self.logits)
 
-        self.ce_op = self.cross_entropy()
-        self.mse_op = self.mse()
         self.acc_op = self.accuracy()
 
+        self.error_descr = error_function
         if error_function is "mse":
+            self.mse_op = self.mse()
             self.error = self.mse_op
         elif error_function is "ce":
+            self.ce_op = self.cross_entropy()
             self.error = self.ce_op
         else:
             raise ValueError('Invalid error function provided. Use either "mse" or "ce" code.')
@@ -204,6 +217,16 @@ class FLANeuralNetwork(object):
         elif self.act_fn == tf.nn.relu:
             return "relu"
         return "unknown"
+
+    def get_output_act(self):
+        if self.out_act_fn == tf.nn.sigmoid:
+            return "sigmoid"
+        elif self.out_act_fn == tf.nn.softmax:
+            return "softmax"
+        return "unknown"
+
+    def get_error_descr(self):
+        return self.error_descr
 
     def cross_entropy(self):
         if self.out_act_fn == tf.nn.sigmoid:
@@ -508,8 +531,6 @@ class FLANeuralNetwork(object):
                     sess.run(self.weight_upd_ops, feed_dict={self.X: batch_x, self.Y: batch_y})
 
                 error_history_py[step] = single_step #[ce, mse, acc]
-            if print_to_screen is True:
-                print("Done with walk number ", walk_counter+1)
             print("Done with walk number ", walk_counter + 1)
             all_walks[walk_counter] = error_history_py
 
