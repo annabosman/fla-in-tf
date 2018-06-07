@@ -2,12 +2,13 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-import matplotlib.pyplot as plt  # Matplotlib is used to generate plots of data.
+#import matplotlib.pyplot as plt  # Matplotlib is used to generate plots of data.
 
 
 def random_walk(num_steps, step_size, shape):
     with tf.variable_scope("pos_var", reuse=tf.AUTO_REUSE):
-        current_pos = tf.get_variable("pos", dtype=tf.float32, initializer=tf.random_uniform(shape, -bounds, bounds, dtype=tf.float32))
+        current_pos = tf.get_variable("pos", dtype=tf.float32,
+                                      initializer=tf.random_uniform(shape, -bounds, bounds, dtype=tf.float32))
     init_state = (0, current_pos)
     condition = lambda i, _: i < num_steps
     body = lambda i, pos: (i + 1, random_step_tf(pos, step_size))
@@ -88,7 +89,7 @@ def progressive_mask_tf(scope, shape):
 
 
 def reinit_progressive_mask_tf(mask):
-    start = tf.ones(mask.shape) * -1
+    start = tf.ones(mask.shape, dtype=tf.float32) * -1
     mask_base = tf.random_uniform(mask.shape, 0, 2, dtype=tf.int32)
     init_mask = start ** tf.cast(mask_base, tf.float32)
     mask = tf.assign(mask, init_mask)
@@ -192,13 +193,13 @@ if __name__ == '__main__':
         print("Bounded random walk: ", walk)
 
         # DRAW FIGURES (for debugging)
-        fig = plt.figure()
+        #fig = plt.figure()
 
-        plt.scatter(walk[:, 0], walk[:, 1])
-        plt.plot(walk[:, 0], walk[:, 1])
-        plt.xlabel('x1')
-        plt.ylabel('x2')
-        plt.xlim(-1,1)
-        plt.ylim(-1,1)
+        #plt.scatter(walk[:, 0], walk[:, 1])
+        #plt.plot(walk[:, 0], walk[:, 1])
+        #plt.xlabel('x1')
+        #plt.ylabel('x2')
+        #plt.xlim(-1,1)
+        #plt.ylim(-1,1)
         # plt.axis('equal')
-        plt.show()
+        #plt.show()

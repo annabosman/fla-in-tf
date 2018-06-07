@@ -10,8 +10,7 @@ class MetricGenerator:
     """
     This class provides an easy-to-use interface to combine NNs with FLA metrics
     """
-    def __init__(self, nn_model, get_data, walk_type, num_steps, num_walks, num_sims, bounds, macro=True, step_size=0, print_to_screen=False):
-        self.get_data = get_data
+    def __init__(self, nn_model, walk_type, num_steps, num_walks, num_sims, bounds, macro=True, step_size=0, print_to_screen=False):
         self.walk_type = walk_type
         self.num_steps = num_steps
         self.num_walks = num_walks
@@ -32,13 +31,13 @@ class MetricGenerator:
     def do_the_sims(self, sess):
         all_sims = []
         for i in range(0, self.num_sims):
-            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.print_to_screen)
             all_sims.append(all_w)
         return all_sims
 
     # Return all walks performed for a single simulation
     def do_the_walks(self, sess):
-        all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+        all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.print_to_screen)
         return all_w
 
     def write_walks_to_file_sequentially(self, filename_header, sess):
@@ -58,11 +57,33 @@ class MetricGenerator:
             np.savetxt(f, [header], "%s", delimiter=",")
             np.savetxt(f, all_w, delimiter=",")
 
+    def write_walks_to_file_sequentially_one_at_a_time(self, filename_header, sess):
+
+        header = self.nn_model.get_header()
+
+        filename = filename_header + "_" + self.nn_model.get_error_descr()
+        if self.macro is True:
+            filename += "_macro_"
+        else:
+            filename += "_micro_"
+        filename = filename + self.nn_model.get_hidden_act()
+        filename = filename + "_" + self.nn_model.get_output_act()
+        filename = filename + "_b" + str(self.bounds)
+        filename = filename + "_s" + str(self.num_steps) + ".csv"
+        with open(filename, "w") as f:
+            np.savetxt(f, [header], "%s", delimiter=",")
+
+        with open(filename, "a") as f:
+            for walk_counter in range(0, self.num_walks):
+                walk = self.nn_model.one_walk(sess, self.num_steps, self.print_to_screen)
+                print("Done with walk ", walk_counter)
+                np.savetxt(f, walk, delimiter=",")
+
     def get_neutrality_and_ruggedness_metrics_only(self, filename_header, sess):
         m_list = np.empty((self.num_sims, 2, 3))
         fem_list = np.empty((self.num_sims, 3))
         for i in range(0, self.num_sims):
-            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.print_to_screen)
 
             m1, m2 = fla.calc_ms(all_w)
             if self.print_to_screen is True:
@@ -124,7 +145,7 @@ class MetricGenerator:
         m_list = np.empty((self.num_sims, 2, 3))
 
         for i in range(0, self.num_sims):
-            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.print_to_screen)
 
             m1, m2 = fla.calc_ms(all_w)
             if self.print_to_screen is True:
@@ -165,7 +186,7 @@ class MetricGenerator:
         fem_list = np.empty((self.num_sims, 3))
 
         for i in range(0, self.num_sims):
-            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.print_to_screen)
             fem = fla.calc_fem(all_w)
             if self.print_to_screen is True:
                 print("Avg FEM: ", fem)
@@ -193,7 +214,7 @@ class MetricGenerator:
         grad_list = np.empty((self.num_sims, 2, 3))
 
         for i in range(0, self.num_sims):
-            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.get_data, self.print_to_screen)
+            all_w = self.nn_model.one_sim(sess, self.num_walks, self.num_steps, self.print_to_screen)
             g = fla.calc_grad(all_w, d, self.step_size, self.bounds)
             if self.print_to_screen is True:
                 print("Avg Grad: ", g)
