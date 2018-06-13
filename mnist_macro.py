@@ -10,12 +10,13 @@ import numpy as np
 import nn_for_fla_tf as nns
 from nn_for_fla_tf import FLANeuralNetwork
 from fla_for_nn_tf import MetricGenerator
+from tensorflow import models
 
 # Import MNIST data
-from tensorflow.examples.tutorials.mnist import input_data
+#from tensorflow.examples.tutorials.mnist import input_data
 
 # Input/output data
-mnist = input_data.read_data_sets("datasets", one_hot=True)
+mnist = tf.keras.datasets.mnist.load_datanput_data.read_data_sets("datasets", one_hot=True)
 
 # Network Parameters
 n_hidden_1 = 100    # 1st layer number of neurons
@@ -29,7 +30,6 @@ batch_size = 1000   # Number of input patterns
 num_steps = 100    # Macro: 100 steps
 macro = True       # macro
 bounds = 10        # Variable: {1,10}
-
 
 _inputs = tf.placeholder(tf.float32, [None, num_input])
 _outputs = tf.placeholder(tf.float32, [None, num_classes])

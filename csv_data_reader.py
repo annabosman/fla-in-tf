@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import csv
 from sklearn import preprocessing
 
 class Data:
@@ -11,11 +12,27 @@ class Data:
         self.training_labels = None
         self.training_labels_1hot = None
 
+    def load_csv_with_header(filename,
+                             target_dtype,
+                             features_dtype,
+                             target_column=-1):
+        """Load dataset from CSV file with a header row."""
+        with gfile.Open(filename) as csv_file:
+            data_file = csv.reader(csv_file)
+            header = next(data_file)
+            n_samples = int(header[0])
+            n_features = int(header[1])
+            data = np.zeros((n_samples, n_features), dtype=features_dtype)
+            target = np.zeros((n_samples,), dtype=target_dtype)
+            for i, row in enumerate(data_file):
+                target[i] = np.asarray(row.pop(target_column), dtype=target_dtype)
+                data[i] = np.asarray(row, dtype=features_dtype)
+            return data, target
+
     def load(self, training_filename):
         """
         Load CSV files into class member variables.
         """
-
         # Load training data using load_csv() function from Tensorflow 0.10.
         training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
             filename=training_filename, features_dtype=np.float32, target_dtype=np.int)
@@ -23,7 +40,6 @@ class Data:
         self.training_features    = training_set.data.astype(np.float32)
         self.training_labels_1hot = self.convert_to_one_hot(training_set.target)
         self.training_labels      = np.reshape(training_set.target,(training_set.target.shape[0], 1))
-
 
     def convert_to_one_hot(self, vector, num_classes=None):
         """
@@ -61,8 +77,7 @@ class Data:
 
     def standardise_features(self):
         """
-        Scale numerical features to a predefined range.
-        Default range: [-1,1]
+        Standardise numerical features (Z-score).
         """
         self.training_features = preprocessing.scale(self.training_features)
 

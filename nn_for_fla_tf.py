@@ -13,6 +13,7 @@ import random_samplers_tf as rs
 
 class Curvature:
     convex, concave, saddle, singular = range(1, 5)
+    #  1       2        3       4
 
 
 def get_curvature(eigens_vector):
