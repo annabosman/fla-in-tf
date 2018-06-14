@@ -30,9 +30,6 @@ dimension = nns.get_dimensionality(num_input, [n_hidden_1], num_classes)
 
 # NN Parameters
 batch_size = X_data.shape[0]  # Number of input patterns
-num_steps = 100    # Macro: 100 steps
-macro = True       # macro
-bounds = 1        # Variable: {1,10}
 
 _inputs = tf.placeholder(tf.float32, [None, num_input])
 _outputs = tf.placeholder(tf.float32, [None, num_classes])
@@ -43,9 +40,13 @@ next_batch = iterator.get_next()
 data_init_op = iterator.make_initializer(data)
 
 # Sampling parameters
-num_steps = 1000   # Macro: 100 steps, micro: 1000 steps
 macro = False      # macro
-bounds = 1       # Variable: {1,10}
+if macro:
+    num_steps = 100  # Macro: 100 steps, micro: 1000 steps
+else:
+    num_steps = 1000  # Macro: 100 steps, micro: 1000 steps
+
+bounds = 10       # Variable: {1,10}
 
 num_walks = dimension * 10   # make it equal to num weights (i.e. dimension)
 num_sims = 1                 # Do 1 sim for now. See if we can get away with it. (Ask Prof!)
@@ -53,7 +54,7 @@ num_sims = 1                 # Do 1 sim for now. See if we can get away with it.
 # Do the sampling!
 nn_model = FLANeuralNetwork(input_tensor=next_batch[0], output_tensor=next_batch[1],
                             num_input=num_input, num_classes=num_classes, num_hidden=[n_hidden_1],
-                            act_fn=tf.nn.sigmoid, out_act_fn=tf.nn.sigmoid, error_function="mse", compute_eigens=True)
+                            act_fn=tf.nn.sigmoid, out_act_fn=tf.nn.sigmoid, error_function="ce", compute_eigens=True)
 
 mgen = MetricGenerator(nn_model, "unbounded_gradient", num_steps, num_walks, num_sims, bounds,
                        macro=macro, print_to_screen=False)
