@@ -32,7 +32,7 @@ dimension = nns.get_dimensionality(num_input, [n_hidden_1], num_classes)
 batch_size = X_data.shape[0]  # Number of input patterns
 num_steps = 100    # Macro: 100 steps
 macro = True       # macro
-bounds = 10        # Variable: {1,10}
+bounds = 1        # Variable: {1,10}
 
 _inputs = tf.placeholder(tf.float32, [None, num_input])
 _outputs = tf.placeholder(tf.float32, [None, num_classes])
