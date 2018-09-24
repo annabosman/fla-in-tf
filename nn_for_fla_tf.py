@@ -465,7 +465,7 @@ class FLANeuralNetwork(object):
 
         return all_walks, all_walks_pos
 
-    def one_sim(self, sess, num_walks, num_steps, print_to_screen=False):
+    def one_sim(self, sess, init_ops, num_walks, num_steps, print_to_screen=False):
         # 3rd dimension: number of variables calculated/returned per step.
         # In case of saddle metrics, need 3: fitness (always put fitness first!), curvature, gradient magnitude
         # In case of other metrics, all you need is the fitness. 1 parameter.
@@ -482,11 +482,16 @@ class FLANeuralNetwork(object):
         for walk_counter in range(0, num_walks):
             error_history_py = np.empty((num_steps, num_vars))  # dimensions: x -> steps, y -> error metrics
 
+
             sess.run(self.init) # initialise all weights/masks
             sess.run(self.mask_init_ops)
             sess.run(self.weight_init_ops)
             for step in range(0, num_steps):
                 single_step = []
+
+                # Init dataset
+                sess.run(init_ops['train_init'])
+
                 # Calculate batch loss and accuracy
                 if self.compute_eigens and self.compute_accuracy:
                     error, acc, eigenvalues, curvature, grad_norm = \
@@ -541,28 +546,37 @@ class FLANeuralNetwork(object):
 
         return all_walks, header
 
-    def one_walk(self, sess, num_steps, print_to_screen=False):
+    def one_walk(self, sess, init_ops, num_steps, print_to_screen=False):
         # 3rd dimension: number of variables calculated/returned per step.
         # In case of saddle metrics, need 3: fitness (always put fitness first!), curvature, gradient magnitude
         # In case of other metrics, all you need is the fitness. 1 parameter.
         # For debugging and other purpose, will be nice to also record classification error.
-        num_vars = 1
+        num_vars = 2
         if self.compute_grad_norm: num_vars += 1
         if self.compute_eigens: num_vars += 1
         if self.compute_accuracy: num_vars += 1
 
         error_history_py = np.empty((num_steps, num_vars))  # dimensions: x -> steps, y -> error metrics
-
+        print("num vars: ", num_vars)
         sess.run(self.init) # initialise all weights/masks
         sess.run(self.mask_init_ops)
         sess.run(self.weight_init_ops)
+
+        # Init dataset
+
         for step in range(0, num_steps):
+
+            sess.run(init_ops['train_init'])
             single_step = []
             # Calculate batch loss and accuracy
             if self.compute_eigens and self.compute_accuracy:
                 error, acc, eigenvalues, curvature, grad_norm = \
                     sess.run([self.error, self.acc_op, self.eigenvalues, self.curvature,
                               self.grad_norm])
+                sess.run(init_ops['test_init'])
+                test_error = sess.run(self.error)
+                sess.run(init_ops['train_init'])
+
             elif self.compute_eigens:
                 error, eigenvalues, curvature, grad_norm = \
                     sess.run([self.error, self.eigenvalues, self.curvature,
@@ -577,6 +591,7 @@ class FLANeuralNetwork(object):
                 error = sess.run([self.error])
 
             single_step.append(error)
+            single_step.append(test_error)
             if self.compute_accuracy:
                 single_step.append(acc)
             if self.compute_eigens:
@@ -602,7 +617,7 @@ class FLANeuralNetwork(object):
             elif self.walk_type == "gradient" or self.walk_type == "unbounded_gradient"\
                     or self.walk_type == "adam_ce" or self.walk_type == "gd_ce":
                 sess.run(self.weight_upd_ops)
-
+            print("single step: ", single_step)
             error_history_py[step] = single_step
 
         return error_history_py
@@ -610,6 +625,7 @@ class FLANeuralNetwork(object):
     def get_header(self):
         header = []
         header.append("error")
+        header.append("test error")
         if self.compute_accuracy:
             header.append("accuracy")
         if self.compute_eigens:

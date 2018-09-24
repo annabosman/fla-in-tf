@@ -2,6 +2,72 @@ from __future__ import print_function
 
 import math
 import numpy as np
+import matplotlib.pyplot as plt
+from io import StringIO
+
+
+def read_walks(file_name, num_s=0):
+    if num_s is 0:
+        tokens = str.split(file_name, "_")
+        step_arr = str.split(tokens[len(tokens) - 1], ".")
+        step_arr = str.split(step_arr[0], "s")
+        #print(step_arr)
+        num_steps = int(step_arr[1])
+    else:
+        num_steps = num_s
+
+    data = np.loadtxt(fname=file_name, delimiter=",", skiprows=1)  # skip the header
+    # Reshape the data into 3d array, using num_steps
+
+    valid_size = data.shape[0] - (data.shape[0] % num_steps)
+    data = data[:valid_size, :]
+
+    data = data.reshape((-1, num_steps, data.shape[1]))
+    return data
+
+
+# Exponentially weighted moving average
+# Borrowed from: https://stackoverflow.com/questions/42869495/numpy-version-of-exponential-weighted-moving-average-equivalent-to-pandas-ewm
+#
+def ewma(data, window=-1):
+    if window is -1:
+        window = data.shape[0]
+
+    alpha = 2 /(window + 1.0)
+    alpha_rev = 1-alpha
+    n = data.shape[0]
+
+    pows = alpha_rev**(np.arange(n+1))
+    if not np.all(pows[:-1]):
+        print("alpha, window, n, pows: ", alpha, window, n, pows)
+    scale_arr = 1/pows[:-1]
+    offset = data[0]*pows[1:]
+    pw0 = alpha*alpha_rev**(n-1)
+
+    mult = data*pw0*scale_arr
+    cumsums = mult.cumsum()
+    out = offset + cumsums*scale_arr[::-1]
+    return out
+
+
+def moving_average(a, n=4) :
+    ret = np.cumsum(a, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:] / n
+
+
+def smoothed_ma(a, windowSize=4) :
+    # calculate the smoothed moving average
+    weights = np.repeat(1.0, windowSize) / windowSize
+    yMA = np.convolve(a[:], weights, 'valid')
+    return yMA
+
+
+def moving_stdev(a, W=4):
+    nrows = a.size - W + 1
+    n = a.strides[0]
+    a2D = np.lib.stride_tricks.as_strided(a, shape=(nrows, W), strides=(n, n))
+    return np.std(a2D, 1)
 
 
 def compute_s(epsilon, walk_diff):
@@ -107,6 +173,67 @@ def scale_walk(walk):
     return (walk - min_f) / diff
 
 
+def get_stationary(walk):
+    """Try different window sizes; Return the values with the largest flatness length length."""
+    walk = scale_walk(walk)
+    archive_length = 0
+    avg_length = 0
+    win = 20
+    window = 20
+    while window > 3:
+        moving_exp_avg = ewma(walk, int(window))
+        moving_std_exp_avg = moving_stdev(moving_exp_avg, int(window))
+        y = compute_stationary(moving_std_exp_avg, np.std(moving_std_exp_avg))
+        #print("x, y, z, w: ", x, y, z, window)
+        if not y:
+            avg = 0
+        else:
+            avg = np.average(y)
+        if avg > avg_length:
+            archive_length = len(y)
+            avg_length = avg
+            win = window
+        window -= 1
+
+    return archive_length, avg_length, win
+
+
+def compute_stationary(walk, epsilon):
+    """Calculate the number of times a given walk gets "stuck". Input: diff of a scaled random walk"""
+    """The function assumes standard deviation sequence is sent through; difference from epsilon
+    is calculated."""
+    stuck = False
+    length_stuck = 0
+    #escape_count = 0
+    #stuck_count = 0
+    archive = []
+
+    if epsilon < 1e-8:
+        #print("Flat walk detected!")
+        return [len(walk)]
+
+    for i in range(0, len(walk)):
+        if stuck:
+            if walk[i] > epsilon:
+                stuck = False
+                if length_stuck > 0 and length_stuck > 1:
+                    archive.append(length_stuck)
+                    length_stuck = 0
+            else:
+                length_stuck += 1
+        else:
+            if walk[i] < epsilon:
+                stuck = True
+                length_stuck += 1
+        #print("iteration ", i, ", vars: ", stuck_count, length_stuck, escape_count)
+
+    if length_stuck > 0 and length_stuck > 1:
+        archive.append(length_stuck)
+    # Actually, len(archive) is a good estimate of # basins!
+
+    return archive
+
+
 def compute_m1(walk, epsilon):
     """Calculate the neutrality metric M1. Input: progressive random walk (will be scaled to [0,1])"""
     walk = scale_walk(walk)
@@ -121,8 +248,8 @@ def compute_m1(walk, epsilon):
 
 
 def compute_m2(walk, epsilon):
-    walk = scale_walk(walk)
     """Calculate the neutrality metric M2. Input: progressive random walk (will be scaled to [0,1])"""
+    walk = scale_walk(walk)
     m2 = 0.
     temp = 0.
     len_3p_walk = len(walk) - 2
@@ -171,6 +298,19 @@ def calculate_metrics(all_walks, dim, step_size, bounds):
     return my_grad, my_rugg, my_neut1, my_neut2
 
 
+def calc_stationary(all_walks):
+    # calc avg over multiple walks; assume single variable, i.e 2d array
+    my_stat_x = []
+    my_stat_y = []
+    my_stat_w = []
+    for i in range(all_walks.shape[0]):
+        x, y, w = get_stationary(all_walks[i,:])
+        my_stat_x.append(x)
+        my_stat_y.append(y)
+        my_stat_w.append(w)
+    return my_stat_x, my_stat_y, my_stat_w
+
+
 def calc_grad(all_walks, dim, step_size, bounds):
     # (1) Gradients [NB: requires a Manhattan walk!]:
     my_grad = np.apply_along_axis(compute_grad, 1, all_walks, dim, step_size, bounds)
@@ -197,3 +337,69 @@ if __name__ == '__main__':
     print("M2: ", compute_m2(my_walk, 1e-8))
     print("FEM: ", compute_fem(np.diff(my_walk)))
     print("Grad: ", compute_grad(my_walk, 1, 0.1, 0.5))
+
+    my_walk = np.array([0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.1,0.3,0.5,0.7,0.8,0.9,1.,1.1,1.,1.,1.2,1,1.3,1.,1.,1.,1.1,
+                        1,1.,0.9,1.,1.1,1.,1,1.1,1.,0.9,1.,1.,1.,1.2,1.3,1.6,1.8,1.9,2.0,2.1,2.0,2.05,1.9,2.,2.1,1.9,
+                        2.0,2.1,2.0,2.05,1.9,2.,2.1,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.1,0.3,0.5,0.7,0.8,0.9,1.,1.1,1.,
+                        1.,1.2,1,1.3,1.,1.,1.,1.1,1,1.,0.9,1.,1.1,1.,1,1.1,1.,0.9,1.,1.,1.,1.2,1.3,1.6,1.8,1.9,2.0,2.1,
+                        2.0,2.05,1.9,2.,2.1,1.9,2.0,2.1,2.0,2.05,1.9,2.,2.1]) # test
+#    print("Walk length: ", len(my_walk))
+    window = 5  # Test different window values; check the lengths; max length is the one to use
+    # Use exponential avg
+    moving_avg = smoothed_ma(my_walk, window)
+    moving_exp_avg = ewma(my_walk, window)
+    moving_std = moving_stdev(my_walk, window)
+    moving_std_avg = moving_stdev(moving_avg, window)
+    moving_std_exp_avg = moving_stdev(moving_exp_avg, window)
+    y = compute_stationary(moving_std_exp_avg, np.std(moving_std_exp_avg))
+
+    print("stuck, length: ", len(y), np.average(y))
+
+    x, y, w = get_stationary(my_walk)
+    print("AUTO stuck, length, window: ", x, y, w)
+    #plt.show()
+
+    #arr = read_walks("xor_hessian_mse_macro_sigmoid_sigmoid_b10_s100.csv")
+    arr = read_walks("xor_TEST_many_s1000.csv")
+    print(arr[:,:,0].shape)
+    sub = arr[:,:,0] # for a single walk: [i,:]
+    #print(sub[0,:])
+    x, y, w = calc_stationary(sub)
+    print("Averages:", np.average(x), np.average(y), np.average(w))
+    print("Std devs:", np.std(x), np.std(y), np.std(w))
+    print("Min:", np.min(x), np.min(y), np.min(w))
+    print("Max:", np.max(x), np.max(y), np.max(w))
+
+    print("arxive", x)
+    print("length", y)
+    print("window", w)
+    my_walk = scale_walk(sub[5,:])
+    #my_walk = sub[3, :]
+    #print("walk:", my_walk)
+
+    window = 15  # Test different window values; check the lengths; max length is the one to use
+    # Use exponential avg
+    moving_avg = smoothed_ma(my_walk, window)
+    moving_exp_avg = ewma(my_walk, window)
+    moving_std = moving_stdev(my_walk, window)
+    moving_std_avg = moving_stdev(moving_avg, window)
+    moving_std_exp_avg = moving_stdev(moving_exp_avg, window)#
+    y = compute_stationary(moving_std_exp_avg, np.std(moving_std_exp_avg))
+    std_graph = np.repeat(np.std(moving_std_exp_avg), len(my_walk))
+    print("std of the walk: ", np.std(moving_std_exp_avg))
+    if y : avrg = np.average(y)
+    else: avrg = 0
+    print("stuck, archive, avg: ", len(y), y, avrg)
+
+    plt.plot(my_walk, label='The walk')
+    plt.plot(std_graph, label="Std Dev waterline")
+    plt.plot(moving_exp_avg, label='Exp avg')
+    #plt.plot(moving_avg, label='Moving avg')
+    #plt.plot(moving_std, label='Moving stdev')
+    plt.plot(moving_std_exp_avg, label='Moving stdev of ewma')
+    #plt.plot(moving_std_avg, label='Moving stdev of moving avg')
+    #plt.plot(np.diff(smoothed_ma(my_walk,6)), label='Diff of Moving avg')
+    #arr = read_walks("test_the_read_functionality_3.csv")
+    #print(arr)
+    plt.legend(loc=1, borderaxespad=0.)
+    plt.show()
