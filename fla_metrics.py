@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import math
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from io import StringIO
 
 
@@ -26,6 +26,54 @@ def read_walks(file_name, num_s=0):
     return data
 
 
+def read_walks_with_header(file_name, num_s=0):
+    header =""
+    if num_s is 0:
+        tokens = str.split(file_name, "_")
+        header += tokens[3] # micro/macro
+        header = header + " " + tokens[6] # micro/macro
+
+        step_arr = str.split(tokens[len(tokens) - 1], ".")
+        step_arr = str.split(step_arr[0], "s")
+        num_steps = int(step_arr[1])
+    else:
+        num_steps = num_s
+
+    data = np.loadtxt(fname=file_name, delimiter=",", skiprows=1)  # skip the header
+    # Reshape the data into 3d array, using num_steps
+
+    valid_size = data.shape[0] - (data.shape[0] % num_steps)
+    data = data[:valid_size, :]
+
+    data = data.reshape((-1, num_steps, data.shape[1]))
+
+    return data, header
+
+
+def write_fla_metrics_to_file(filename, files):
+    header = "setting,fem,m1,m2,gavg,gdev,last_t,best_t,last_g,best_g"
+    with open(filename, "w") as f:
+        f.write(header + "\n")
+    for fname in files:
+        print("Processing file ", fname, "...")
+        arr, line = read_walks_with_header(fname)
+
+        fem, _ = calc_fem(arr)  # discard stdev
+        m1, _, m2, _ = calc_ms(arr)  # discard stdevs
+        gavg = np.average(arr[:, :, arr.shape[2] - 1])
+        gdev = np.std(arr[:, :, arr.shape[2] - 1])
+        last_t = np.average(arr[:, arr.shape[1] - 1, 2])
+        best_t = np.average(np.amax(arr[:, :, 2], axis=1))
+        last_g = np.average(arr[:, arr.shape[1] - 1, 3])
+        best_g = np.average(np.amax(arr[:, :, 3], axis=1))
+
+        line = line + "," + str(fem[0]) + "," + str(m1[0]) + "," + str(m2[0])
+        line = line + "," + str(gavg) + "," + str(gdev) + "," + str(last_t) + "," + str(best_t)
+        line = line + "," + str(last_g) + "," + str(best_g)
+
+        with open(filename, "a") as f:
+            f.write(line + "\n")
+
 # Exponentially weighted moving average
 # Borrowed from: https://stackoverflow.com/questions/42869495/numpy-version-of-exponential-weighted-moving-average-equivalent-to-pandas-ewm
 #
@@ -48,6 +96,20 @@ def ewma(data, window=-1):
     cumsums = mult.cumsum()
     out = offset + cumsums*scale_arr[::-1]
     return out
+
+
+# This answer may seem irrelevant. But, for those who also need to calculate the exponentially weighted variance
+# (and also standard deviation) with numpy, the following solution will be useful:
+def ew(a, winSize):
+    alpha = 2 /(winSize + 1.0)
+    _alpha = 1 - alpha
+    ws = _alpha ** np.arange(winSize)
+    w_sum = ws.sum()
+    ew_mean = np.convolve(a, ws)[winSize - 1] / w_sum
+    bias = (w_sum ** 2) / ((w_sum ** 2) - (ws ** 2).sum())
+    ew_var = (np.convolve((a - ew_mean) ** 2, ws)[winSize - 1] / w_sum) * bias
+    ew_std = np.sqrt(ew_var)
+    return ew_mean, ew_var, ew_std
 
 
 def moving_average(a, n=4) :
@@ -180,8 +242,11 @@ def get_stationary(walk):
     avg_length = 0
     win = 20
     window = 20
-    while window > 3:
+    while window > 4:
+        #moving_exp_avg,_,moving_std_exp_avg = ew(walk, int(window))
+        #print("moving_exp_avg, moving_std_exp_avg", moving_exp_avg,moving_std_exp_avg)
         moving_exp_avg = ewma(walk, int(window))
+        #moving_std_exp_avg = pd.ewmstd(walk, span=int(window))
         moving_std_exp_avg = moving_stdev(moving_exp_avg, int(window))
         y = compute_stationary(moving_std_exp_avg, np.std(moving_std_exp_avg))
         #print("x, y, z, w: ", x, y, z, window)
@@ -189,11 +254,12 @@ def get_stationary(walk):
             avg = 0
         else:
             avg = np.average(y)
+        #print("window, avg: ", window, avg)
         if avg > avg_length:
             archive_length = len(y)
             avg_length = avg
             win = window
-        window -= 1
+        window -= 2
 
     return archive_length, avg_length, win
 
@@ -204,19 +270,16 @@ def compute_stationary(walk, epsilon):
     is calculated."""
     stuck = False
     length_stuck = 0
-    #escape_count = 0
-    #stuck_count = 0
     archive = []
 
     if epsilon < 1e-8:
-        #print("Flat walk detected!")
         return [len(walk)]
 
     for i in range(0, len(walk)):
         if stuck:
             if walk[i] > epsilon:
                 stuck = False
-                if length_stuck > 0 and length_stuck > 1:
+                if length_stuck > 5:
                     archive.append(length_stuck)
                     length_stuck = 0
             else:
@@ -225,12 +288,9 @@ def compute_stationary(walk, epsilon):
             if walk[i] < epsilon:
                 stuck = True
                 length_stuck += 1
-        #print("iteration ", i, ", vars: ", stuck_count, length_stuck, escape_count)
 
-    if length_stuck > 0 and length_stuck > 1:
+    if length_stuck > 5:
         archive.append(length_stuck)
-    # Actually, len(archive) is a good estimate of # basins!
-
     return archive
 
 
@@ -320,7 +380,7 @@ def calc_grad(all_walks, dim, step_size, bounds):
 def calc_fem(all_walks):
     # (2) Ruggedness [NB: requires a progressive random walk]:
     my_rugg = np.apply_along_axis(compute_fem, 1, np.diff(all_walks, axis=1))
-    return np.average(my_rugg, 0)
+    return np.average(my_rugg, 0), np.std(my_rugg, 0)
 
 
 def calc_ms(all_walks):
@@ -328,7 +388,7 @@ def calc_ms(all_walks):
     all_err_diff = np.diff(all_walks, axis=1)
     my_neut1 = np.apply_along_axis(compute_m1, 1, all_err_diff, 1.0e-8)
     my_neut2 = np.apply_along_axis(compute_m2, 1, all_err_diff, 1.0e-8)
-    return np.average(my_neut1, 0), np.average(my_neut2, 0)
+    return np.average(my_neut1, 0), np.std(my_neut1, 0), np.average(my_neut2, 0), np.std(my_neut2, 0)
 
 
 if __name__ == '__main__':
@@ -338,13 +398,23 @@ if __name__ == '__main__':
     print("FEM: ", compute_fem(np.diff(my_walk)))
     print("Grad: ", compute_grad(my_walk, 1, 0.1, 0.5))
 
-    my_walk = np.array([0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.1,0.3,0.5,0.7,0.8,0.9,1.,1.1,1.,1.,1.2,1,1.3,1.,1.,1.,1.1,
+    my_walk = scale_walk(np.array([0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.1,0.3,0.5,0.7,0.8,0.9,1.,1.1,1.,1.,1.2,1,1.3,1.,1.,1.,1.1,
                         1,1.,0.9,1.,1.1,1.,1,1.1,1.,0.9,1.,1.,1.,1.2,1.3,1.6,1.8,1.9,2.0,2.1,2.0,2.05,1.9,2.,2.1,1.9,
                         2.0,2.1,2.0,2.05,1.9,2.,2.1,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.1,0.3,0.5,0.7,0.8,0.9,1.,1.1,1.,
                         1.,1.2,1,1.3,1.,1.,1.,1.1,1,1.,0.9,1.,1.1,1.,1,1.1,1.,0.9,1.,1.,1.,1.2,1.3,1.6,1.8,1.9,2.0,2.1,
-                        2.0,2.05,1.9,2.,2.1,1.9,2.0,2.1,2.0,2.05,1.9,2.,2.1]) # test
-#    print("Walk length: ", len(my_walk))
-    window = 5  # Test different window values; check the lengths; max length is the one to use
+                        2.0,2.05,1.9,2.,2.1,1.9,2.0,2.1,2.0,2.05,1.9,2.,2.1])) # test
+
+
+    my_walk = scale_walk(np.array([0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.,0.1,0.3,0.5,0.7,0.8,0.9,1.,1.1,1.,1.,1.5,1,1.3,1.,1.,1.,1.5,1.5,1,1.3,1.,1.,1.,1.5,
+                        1,1.,0.9,1.,1.1,1.,1,1.1,1.,0.9,1.,1.,1.,1.2,1.3,1.6,1.8,1.9,2.0,2.1,2.0,2.05,1.9,2.,2.1,1.9,2.1,2.0,2.05,1.9,2.,2.1,1.9,
+                        2.0,2.1,2.0,2.05,1.9,2.,2.1,0.,0.,0.4,0.2,0.,0.3,0.,0.,0.,0.,0.1,0.3,0.5,0.7,0.8,0.9,1.,1.1,1.,1.,1.2,1,1.3,1.,1.,1.,1.1,1,
+                        1.,1.2,1,1.3,1.,1.,1.,1.1,1,1.,0.9,1.,1.1,1.,1,1.1,1.,0.9,1.,1.,1.,1.2,1.3,1.6,1.8,1.9,2.0,2.1,1.2,1.3,1.6,1.8,1.9,2.0,2.1,
+                        2.0,2.05,1.9,2.,2.1,1.9,2.0,2.1,2.0,2.05,1.9,2.,2.1,1.9,2.0,2.1,2.0,2.05,1.9,2.,2.1])) # test
+    np.random.seed(0)
+    my_walk = np.append(np.ones(33)*3, [np.ones(33)*2, np.ones(33)])
+    my_walk = my_walk + np.random.normal(0, 0.15, 99)
+    print("Walk length: ", len(my_walk))
+    window = 6  # Test different window values; check the lengths; max length is the one to use
     # Use exponential avg
     moving_avg = smoothed_ma(my_walk, window)
     moving_exp_avg = ewma(my_walk, window)
@@ -352,19 +422,20 @@ if __name__ == '__main__':
     moving_std_avg = moving_stdev(moving_avg, window)
     moving_std_exp_avg = moving_stdev(moving_exp_avg, window)
     y = compute_stationary(moving_std_exp_avg, np.std(moving_std_exp_avg))
+    std_graph = np.repeat(np.std(moving_std_exp_avg), len(my_walk))
 
     print("stuck, length: ", len(y), np.average(y))
 
     x, y, w = get_stationary(my_walk)
     print("AUTO stuck, length, window: ", x, y, w)
     #plt.show()
-
+    arr = read_walks("data/output/xor/hessian/xor_hessian_ce_micro_sigmoid_sigmoid_b10_s1000.csv")
     #arr = read_walks("xor_hessian_mse_macro_sigmoid_sigmoid_b10_s100.csv")
-    arr = read_walks("xor_TEST_many_s1000.csv")
-    print(arr[:,:,0].shape)
+    #arr = read_walks("xor_TEST_many_s1000.csv")
+    #print(arr[:,:,0].shape)
     sub = arr[:,:,0] # for a single walk: [i,:]
     #print(sub[0,:])
-    x, y, w = calc_stationary(sub)
+    #x, y, w = calc_stationary(sub)
     print("Averages:", np.average(x), np.average(y), np.average(w))
     print("Std devs:", np.std(x), np.std(y), np.std(w))
     print("Min:", np.min(x), np.min(y), np.min(w))
@@ -373,12 +444,12 @@ if __name__ == '__main__':
     print("arxive", x)
     print("length", y)
     print("window", w)
-    my_walk = scale_walk(sub[5,:])
+    #my_walk = scale_walk(sub[79,:])
     #my_walk = sub[3, :]
     #print("walk:", my_walk)
 
-    window = 15  # Test different window values; check the lengths; max length is the one to use
-    # Use exponential avg
+    # window = 4  # Test different window values; check the lengths; max length is the one to use
+    # # Use exponential avg
     moving_avg = smoothed_ma(my_walk, window)
     moving_exp_avg = ewma(my_walk, window)
     moving_std = moving_stdev(my_walk, window)
@@ -392,14 +463,9 @@ if __name__ == '__main__':
     print("stuck, archive, avg: ", len(y), y, avrg)
 
     plt.plot(my_walk, label='The walk')
-    plt.plot(std_graph, label="Std Dev waterline")
-    plt.plot(moving_exp_avg, label='Exp avg')
-    #plt.plot(moving_avg, label='Moving avg')
-    #plt.plot(moving_std, label='Moving stdev')
-    plt.plot(moving_std_exp_avg, label='Moving stdev of ewma')
-    #plt.plot(moving_std_avg, label='Moving stdev of moving avg')
-    #plt.plot(np.diff(smoothed_ma(my_walk,6)), label='Diff of Moving avg')
-    #arr = read_walks("test_the_read_functionality_3.csv")
-    #print(arr)
-    plt.legend(loc=1, borderaxespad=0.)
+    plt.plot(std_graph, label="Std dev")
+    plt.plot(moving_exp_avg, label='Exp moving avg')
+    plt.plot(moving_std_exp_avg, label='Moving std dev')
+    plt.legend(loc=0, borderaxespad=0.)
+    #plt.savefig("walk_12.eps", bbox_inches='tight')
     plt.show()

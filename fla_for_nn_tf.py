@@ -37,8 +37,8 @@ class MetricGenerator:
 
     # Return all walks performed for a single simulation
     def do_the_walks(self, sess, dict):
-        all_w = self.nn_model.one_sim(sess, dict, self.num_walks, self.num_steps, self.print_to_screen)
-        return all_w
+        all_w, h = self.nn_model.one_sim(sess, dict, self.num_walks, self.num_steps, self.print_to_screen)
+        return all_w, h
 
     def write_walks_to_file_sequentially(self, filename_header, sess, dict):
         all_w, header = self.do_the_walks(sess, dict)
@@ -57,9 +57,9 @@ class MetricGenerator:
             np.savetxt(f, [header], "%s", delimiter=",")
             np.savetxt(f, all_w, delimiter=",")
 
-    def write_walks_to_file_sequentially_one_at_a_time(self, filename_header, sess, init_ops):
+    def write_walks_to_file_sequentially_one_at_a_time(self, filename_header, sess, init_ops, test=True):
 
-        header = self.nn_model.get_header()
+        header = self.nn_model.get_header(test)
 
         filename = filename_header + "_" + self.nn_model.get_error_descr()
         if self.macro is True:
@@ -75,7 +75,25 @@ class MetricGenerator:
 
         with open(filename, "a") as f:
             for walk_counter in range(0, self.num_walks):
-                walk = self.nn_model.one_walk(sess, init_ops, self.num_steps, self.print_to_screen)
+                walk = self.nn_model.one_walk(sess, init_ops, self.num_steps, self.print_to_screen, test)
+                print("Done with walk ", walk_counter)
+                np.savetxt(f, walk, delimiter=",")
+
+    def append_walks_to_file_sequentially_one_at_a_time(self, filename_header, sess, init_ops, test=True):
+
+        filename = filename_header + "_" + self.nn_model.get_error_descr()
+        if self.macro is True:
+            filename += "_macro_"
+        else:
+            filename += "_micro_"
+        filename = filename + self.nn_model.get_hidden_act()
+        filename = filename + "_" + self.nn_model.get_output_act()
+        filename = filename + "_b" + str(self.bounds)
+        filename = filename + "_s" + str(self.num_steps) + ".csv"
+
+        with open(filename, "a") as f:
+            for walk_counter in range(0, self.num_walks):
+                walk = self.nn_model.one_walk(sess, init_ops, self.num_steps, self.print_to_screen, test)
                 print("Done with walk ", walk_counter)
                 np.savetxt(f, walk, delimiter=",")
 
