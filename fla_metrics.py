@@ -30,8 +30,8 @@ def read_walks_with_header(file_name, num_s=0):
     header =""
     if num_s is 0:
         tokens = str.split(file_name, "_")
-        header += tokens[3] # micro/macro
-        header = header + " " + tokens[6] # micro/macro
+        header += tokens[len(tokens) - 5]  # micro/macro
+        header = header + " " + tokens[len(tokens) - 2]  # range
 
         step_arr = str.split(tokens[len(tokens) - 1], ".")
         step_arr = str.split(step_arr[0], "s")

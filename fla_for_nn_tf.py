@@ -75,9 +75,12 @@ class MetricGenerator:
 
         with open(filename, "a") as f:
             for walk_counter in range(0, self.num_walks):
-                walk = self.nn_model.one_walk(sess, init_ops, self.num_steps, self.print_to_screen, test)
-                print("Done with walk ", walk_counter)
-                np.savetxt(f, walk, delimiter=",")
+                try:
+                    walk = self.nn_model.one_walk(sess, init_ops, self.num_steps, self.print_to_screen, test)
+                    print("Done with walk", walk_counter)
+                    np.savetxt(f, walk, delimiter=",")
+                except tf.errors.InvalidArgumentError as e:
+                    print("Error message: ", e.message)
 
     def append_walks_to_file_sequentially_one_at_a_time(self, filename_header, sess, init_ops, test=True):
 
@@ -93,9 +96,12 @@ class MetricGenerator:
 
         with open(filename, "a") as f:
             for walk_counter in range(0, self.num_walks):
-                walk = self.nn_model.one_walk(sess, init_ops, self.num_steps, self.print_to_screen, test)
-                print("Done with walk ", walk_counter)
-                np.savetxt(f, walk, delimiter=",")
+                try:
+                    walk = self.nn_model.one_walk(sess, init_ops, self.num_steps, self.print_to_screen, test)
+                    print("Done with walk ", walk_counter)
+                    np.savetxt(f, walk, delimiter=",")
+                except tf.errors.InvalidArgumentError as e:
+                    print("Error message: ", e.message)
 
     def get_neutrality_and_ruggedness_metrics_only(self, filename_header, sess):
         m_list = np.empty((self.num_sims, 2, 3))

@@ -52,6 +52,77 @@ def get_curvature(eigens_vector):
     return comparison#, ratio
 
 
+def get_relu_saturation(act_vector):
+    """
+    Calculates the saturation of the ReLU activations by calculating the proportion of zeros.
+
+    Args:
+        act_vector: A `Tensor` of rank 1 (?) (vector) containing activations of hidden neurons.
+
+    Returns:
+        saturation: Return the saturation value in range [0,1].
+    """
+    non_zero = tf.cast(tf.count_nonzero(act_vector), tf.float32)
+    size = tf.cast(tf.size(input=act_vector, out_type=tf.int32), tf.float32)
+    ratio = (size - non_zero) / size
+
+    return ratio
+
+
+def get_tanh_saturation(act_vector):
+    """
+    NOT TF COMPATIBLE (will be slow)
+    Calculates the saturation of the bounded activations (SSCI paper).
+
+    Args:
+        act_vector: A np.array of rank 1 (?) (vector) containing activations.
+
+    Returns:
+        saturation: Return the saturation value in range [0,1].
+    """
+    bins = np.zeros(10)
+    cumulatives = np.zeros(10)
+    binbounds = np.arange(-1, 1, 0.2)
+    for x in np.nditer(act_vector):
+        if x > binbounds[9]:
+            bins[9] = bins[9] + 1
+            cumulatives[9] = cumulatives[9] + x
+        elif x > binbounds[8]:
+            bins[8] = bins[8] + 1
+            cumulatives[8] = cumulatives[8] + x
+        elif x > binbounds[7]:
+            bins[7] = bins[7] + 1
+            cumulatives[7] = cumulatives[7] + x
+        elif x > binbounds[6]:
+            bins[6] = bins[6] + 1
+            cumulatives[6] = cumulatives[6] + x
+        elif x > binbounds[5]:
+            bins[5] = bins[5] + 1
+            cumulatives[5] = cumulatives[5] + x
+        elif x > binbounds[4]:
+            bins[4] = bins[4] + 1
+            cumulatives[4] = cumulatives[4] + x
+        elif x > binbounds[3]:
+            bins[3] = bins[3] + 1
+            cumulatives[3] = cumulatives[3] + x
+        elif x > binbounds[2]:
+            bins[2] = bins[2] + 1
+            cumulatives[2] = cumulatives[2] + x
+        elif x > binbounds[1]:
+            bins[1] = bins[1] + 1
+            cumulatives[1] = cumulatives[1] + x
+        else:
+            bins[0] = bins[0] + 1
+            cumulatives[0] = cumulatives[0] + x
+    # Bins have been populated
+    g_hat = np.zeros(10)
+    for i in range(0, 10):
+        if bins[i] > 0:
+            g_hat[i] = cumulatives[i] / bins[i]
+    saturation = np.sum(np.abs(g_hat) * bins) / np.sum(bins)
+    return saturation
+
+
 # Get dimensionality of a NN
 def get_dimensionality(input, hidden, output):
     total = 0
@@ -156,7 +227,7 @@ class FLANeuralNetwork(object):
     def __init__(self, input_tensor, output_tensor,
                  num_input=1, num_hidden=[], num_classes=1, act_fn=tf.nn.sigmoid, out_act_fn=tf.nn.sigmoid,
                  error_function="mse", compute_acuracy=True, compute_grad_norm=False, compute_eigens=False,
-                 implicit_loop=False):
+                 compute_saturation=False, implicit_loop=False):
         self.num_input = num_input
         self.num_classes = num_classes
         self.num_hidden = num_hidden  # list of hidden weight layers
@@ -167,10 +238,17 @@ class FLANeuralNetwork(object):
         self.X = input_tensor
         self.Y = output_tensor
 
+        self.compute_saturation = compute_saturation
+
         # Store layers weight & bias
         self.all_weights = []
+        self.all_hidden_activations = []  # This is for saturation calculation only
         if not implicit_loop:
             self.build_model(error_function) ### Otherwise, build the model inside while_loop
+
+        if self.compute_saturation and self.act_fn == tf.nn.relu:
+            self.saturation = self.calc_relu_sat()
+
         self.compute_grad_norm = compute_grad_norm
         self.compute_eigens = compute_eigens
         if compute_eigens:
@@ -206,11 +284,18 @@ class FLANeuralNetwork(object):
 
             self.all_weights.append(weights)
             self.all_weights.append(biases)
-            layer = self.act_fn(layer) # Making it non-linear
+            layer = self.act_fn(layer)  # Making it non-linear
+            if self.compute_saturation:
+                self.all_hidden_activations.append(layer)  # Storing for later: we want to analyse saturation
             prev_layer, prev_size = layer, size
 
         # Output fully connected layer with a neuron for each class
         out_layer, weights, biases = dense_linear_layer(prev_layer, "output", prev_size, self.num_classes)
+
+        if self.compute_saturation:
+            self.flat_act = tf.concat(self.all_hidden_activations, 0)
+            #self.flat_act = tf.reshape(act_concat, -1)
+
         self.all_weights.append(weights)
         self.all_weights.append(biases)
         return out_layer
@@ -336,6 +421,10 @@ class FLANeuralNetwork(object):
         eigens_vector = tf.concat(eigens, 0)
         curvature = get_curvature(eigens_vector)
         return eigens_vector, curvature
+
+    def calc_relu_sat(self):
+        activation = get_relu_saturation(self.flat_act)
+        return activation
 
     def convert_to_random_step(self, inputs, grad, step_size, bounds):
         is_positive = grad > 0
@@ -502,6 +591,7 @@ class FLANeuralNetwork(object):
                 sess.run(init_ops['train_init'])
 
                 # Calculate batch loss and accuracy
+                # try:
                 if self.compute_eigens and self.compute_accuracy:
                     error, acc, eigenvalues, curvature, grad_norm = \
                         sess.run([self.error, self.acc_op, self.eigenvalues, self.curvature,
@@ -518,6 +608,9 @@ class FLANeuralNetwork(object):
                     error, acc = sess.run([self.error, self.acc_op])
                 else:
                     error = sess.run([self.error])
+                # except tf.errors.InvalidArgumentError as e:
+                #     print("Error message: ", e.message)
+                #     print("DEBUG: ALL WEIGHTS:", self.all_weights)
 
                 single_step.append(error)
                 if self.compute_accuracy:
@@ -571,6 +664,9 @@ class FLANeuralNetwork(object):
             num_vars += 1
             if test:
                 num_vars += 1
+        if self.compute_saturation:
+            num_vars += 1
+
 
         error_history_py = np.empty((num_steps, num_vars))  # dimensions: x -> steps, y -> error metrics
         #print("num vars: ", num_vars)
@@ -584,8 +680,10 @@ class FLANeuralNetwork(object):
 
             sess.run(init_ops['train_init'])
             single_step = []
+
             # Calculate batch loss and accuracy
             if self.compute_eigens and self.compute_accuracy:
+
                 error, acc, eigenvalues, curvature, grad_norm = \
                     sess.run([self.error, self.acc_op, self.eigenvalues, self.curvature,
                               self.grad_norm])
@@ -612,6 +710,13 @@ class FLANeuralNetwork(object):
             else:
                 error = sess.run([self.error])
 
+            if self.compute_saturation:
+                if self.act_fn == tf.nn.relu:
+                    sat = sess.run(self.saturation)
+                elif self.act_fn == tf.nn.tanh:
+                    act = sess.run(self.flat_act)
+                    sat = get_tanh_saturation(act)
+
             single_step.append(error)
             if test:
                 single_step.append(test_error)
@@ -623,6 +728,9 @@ class FLANeuralNetwork(object):
                 single_step.append(curvature)
             if self.compute_grad_norm:
                 single_step.append(grad_norm)
+            if self.compute_saturation:
+                single_step.append(sat)
+
 
             if step % (num_steps/10) == 0 and print_to_screen is True:
                 print("Step " + str(step) + ", Error = " +
@@ -660,6 +768,8 @@ class FLANeuralNetwork(object):
             header.append("curvature")
         if self.compute_grad_norm:
             header.append("grad_norm")
+        if self.compute_saturation:
+            header.append("saturation")
 
         return header
 
@@ -667,6 +777,7 @@ class FLANeuralNetwork(object):
 if __name__ == '__main__':
     a = tf.placeholder(dtype=tf.float32, shape=[6])
     b = get_curvature(a)
+    c = get_relu_saturation(a)
     # Start training
     with tf.Session() as sess:
         # Run the initializer
@@ -692,3 +803,34 @@ if __name__ == '__main__':
         if(r5 == Curvature.saddle):
             print("Correctly identified saddle")
             #print("Ratio is ", str(r5r))
+
+        r1 = sess.run(c, feed_dict={a: [0,0,0,2,3,5]})
+        r2 = sess.run(c, feed_dict={a: [2,6,1,2,3,0.5]})
+        r3 = sess.run(c, feed_dict={a: [0,0,0,0,0,0]})
+        r4 = sess.run(c, feed_dict={a: [0,0,0,0,1,1]})
+
+        if (r1 == 0.5):
+            print("Correctly identified 0.5 saturation")
+            # print("Ratio is ", str(r1r))
+        if (r2 == 0):
+            print("Correctly identified no saturation")
+            # print("Ratio is ", str(r2r))
+        if (r3 == 1):
+            print("Correctly identified complete saturation")
+            # print("Ratio is ", str(r3r))
+        print("Saturation > 0.5:", r4)
+
+        bounds = np.arange(-1, 1, 0.2)
+        for i in range(0, 10):
+            print(bounds[i])
+
+        saturated1 = -np.ones(100)
+        saturated2 = np.ones(100)
+        sat = np.concatenate((saturated1,saturated2))
+
+        nonsat1 = np.zeros(100)
+        nonsat2 = np.random.ranf(100)
+        nonsat3 = np.concatenate((-nonsat2,nonsat2))
+
+        print("Saturated ones:", get_tanh_saturation(saturated1), get_tanh_saturation(saturated2), get_tanh_saturation(sat))
+        print("Non-saturated:", get_tanh_saturation(nonsat1), get_tanh_saturation(nonsat2), get_tanh_saturation(nonsat3))
