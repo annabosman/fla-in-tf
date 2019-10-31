@@ -9,6 +9,7 @@ from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 import random_samplers_tf as rs
+from pgwalk_optimizer import ProgressiveGradientWalkOptimizer
 
 
 class Curvature:
@@ -28,28 +29,32 @@ def get_curvature(eigens_vector):
     """
     max_element = eigens_vector[tf.argmax(eigens_vector, axis=0)]
     min_element = eigens_vector[tf.argmin(eigens_vector, axis=0)]
-    #max_element = tf.Print(max_element, [max_element], "Max element: ")
-    #min_element = tf.Print(min_element, [min_element], "Min element: ")
+    # max_element = tf.Print(max_element, [max_element], "Max element: ")
+    # min_element = tf.Print(min_element, [min_element], "Min element: ")
     non_zero = tf.count_nonzero(eigens_vector)
     total = tf.size(input=eigens_vector, out_type=tf.int64)
 
     def ret_concave(): return tf.constant(Curvature.concave)
+
     def ret_convex(): return tf.constant(Curvature.convex)
+
     def ret_saddle(): return tf.constant(Curvature.saddle)
+
     def ret_singular(): return tf.constant(Curvature.singular)
+
     def ret_default(): return tf.constant(value=-1)
 
     comparison = tf.case([
         (tf.less(non_zero, total), ret_singular),
         (tf.logical_and(tf.logical_and(tf.greater(max_element, 0), tf.less(min_element, 0)), tf.equal(non_zero, total)),
-            ret_saddle),
+         ret_saddle),
         (tf.greater(min_element, 0), ret_convex),
         (tf.less(max_element, 0), ret_concave)
     ], default=ret_default, exclusive=True)
 
-    #ratio = tf.abs(min_element) / tf.abs(max_element)
+    # ratio = tf.abs(min_element) / tf.abs(max_element)
 
-    return comparison#, ratio
+    return comparison  # , ratio
 
 
 def get_relu_saturation(act_vector):
@@ -137,9 +142,9 @@ def get_dimensionality(input, hidden, output):
 def get_random_mask(scope, shape):
     with tf.variable_scope(scope, reuse=False):
         mask = tf.get_variable("mask",
-                                shape=shape,
-                                dtype=tf.float32,
-                                initializer=tf.ones_initializer())
+                               shape=shape,
+                               dtype=tf.float32,
+                               initializer=tf.ones_initializer())
     return mask
 
 
@@ -187,7 +192,7 @@ def dense_linear_layer_symbolic(inputs, layer_weights, layer_bias):
 def neural_net_symbolic(x, all_weights, hidden_act_fn, out_act_fn):
     prev_layer = x
     for i in range(0, len(all_weights)):
-        layer = tf.nn.xw_plus_b(prev_layer, all_weights[2*i], all_weights[2*i + 1])
+        layer = tf.nn.xw_plus_b(prev_layer, all_weights[2 * i], all_weights[2 * i + 1])
         if i < len(all_weights) - 1:
             layer = hidden_act_fn(layer)  # Making it non-linear
         else:
@@ -244,7 +249,7 @@ class FLANeuralNetwork(object):
         self.all_weights = []
         self.all_hidden_activations = []  # This is for saturation calculation only
         if not implicit_loop:
-            self.build_model(error_function) ### Otherwise, build the model inside while_loop
+            self.build_model(error_function)  ### Otherwise, build the model inside while_loop
 
         if self.compute_saturation and self.act_fn == tf.nn.relu:
             self.saturation = self.calc_relu_sat()
@@ -273,7 +278,6 @@ class FLANeuralNetwork(object):
         else:
             raise ValueError('Invalid error function provided. Use either "mse" or "ce" code.')
 
-
     # Create model
     def neural_net(self):
         prev_layer = self.X
@@ -294,7 +298,7 @@ class FLANeuralNetwork(object):
 
         if self.compute_saturation:
             self.flat_act = tf.concat(self.all_hidden_activations, 0)
-            #self.flat_act = tf.reshape(act_concat, -1)
+            # self.flat_act = tf.reshape(act_concat, -1)
 
         self.all_weights.append(weights)
         self.all_weights.append(biases)
@@ -350,25 +354,28 @@ class FLANeuralNetwork(object):
         self.init = tf.global_variables_initializer()
         if self.walk_type == "random":
             for w in self.all_weights:
-                mask = get_random_mask(w.name[:len(w.name)-2], w.shape)#rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
+                mask = get_random_mask(w.name[:len(w.name) - 2],
+                                       w.shape)  # rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
                 self.mask_init_ops.append(rs.reinit_progressive_mask_tf(mask))
                 self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
                 self.weight_upd_ops.append(rs.bounded_random_step_tf(w, step_size, bounds))
         if self.walk_type == "progressive":
             for w in self.all_weights:
-                mask = get_random_mask(w.name[:len(w.name)-2], w.shape)#rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
+                mask = get_random_mask(w.name[:len(w.name) - 2],
+                                       w.shape)  # rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
                 self.mask_init_ops.append(rs.reinit_progressive_mask_tf(mask))
                 self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
                 self.weight_upd_ops.append(rs.progressive_random_step_tf(w, mask, step_size, bounds))
         elif self.walk_type == "manhattan":
             for w in self.all_weights:
-                mask = rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
+                mask = rs.progressive_mask_tf(w.name[:len(w.name) - 2], w.shape)
                 # self.all_masks.append(mask)
                 self.weight_upd_ops.append(rs.progressive_manhattan_random_step_tf(w, mask, step_size, bounds))
                 self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
         elif self.walk_type == "gradient":
             for w in self.all_weights:
-                mask = get_random_mask(w.name[:len(w.name)-2], w.shape)#rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
+                mask = get_random_mask(w.name[:len(w.name) - 2],
+                                       w.shape)  # rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
                 self.mask_init_ops.append(rs.reinit_progressive_mask_tf(mask))
                 self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
 
@@ -379,7 +386,8 @@ class FLANeuralNetwork(object):
 
         elif self.walk_type == "unbounded_gradient":
             for w in self.all_weights:
-                mask = get_random_mask(w.name[:len(w.name)-2], w.shape)#rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
+                mask = get_random_mask(w.name[:len(w.name) - 2],
+                                       w.shape)  # rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
                 self.mask_init_ops.append(rs.reinit_progressive_mask_tf(mask))
                 self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
 
@@ -394,7 +402,6 @@ class FLANeuralNetwork(object):
             if self.compute_grad_norm:
                 self.grad_norm = tf.norm(grad_vector)
 
-
         elif self.walk_type == "gd":
             optimizer = tf.train.GradientDescentOptimizer(learning_rate=step_size).minimize(self.error)
             self.weight_upd_ops.append(optimizer)
@@ -403,14 +410,31 @@ class FLANeuralNetwork(object):
             optimizer = tf.train.AdamOptimizer(learning_rate=step_size)
             self.weight_upd_ops.append(optimizer.minimize(self.error))
 
-            #opt = tf.train.GradientDescentOptimizer(learning_rate=1)
-            #gradients = opt.compute_gradients(self.mse(), self.all_weights)
+        elif self.walk_type == "pgw":
+            for w in self.all_weights:
+                mask = get_random_mask(w.name[:len(w.name) - 2],
+                                       w.shape)  # rs.progressive_mask_tf(w.name[:len(w.name)-2], w.shape)
+                self.mask_init_ops.append(rs.reinit_progressive_mask_tf(mask))
+                self.weight_init_ops.append(rs.reinit_progressive_pos(w, mask, bounds))
+            optimizer = ProgressiveGradientWalkOptimizer(step_size=step_size)
+            self.weight_upd_ops.append(optimizer.minimize(self.error))
 
-            #randomised_grads = [(rs.bounds_check_no_mask(v, (g + tf.random_uniform(g.shape, 0.01, 0.1)), bounds), v)
+            # if self.compute_grad_norm:
+            #     gradients = tf.gradients(ys=self.error, xs=self.all_weights)
+            #     gradlist = []
+            #     for g in gradients:
+            #         gradlist.append(tf.reshape(g, [-1]))
+            #     grad_vector = tf.concat(gradlist, 0)
+            #     self.grad_norm = tf.norm(grad_vector)
+
+            # opt = tf.train.GradientDescentOptimizer(learning_rate=1)
+            # gradients = opt.compute_gradients(self.mse(), self.all_weights)
+
+            # randomised_grads = [(rs.bounds_check_no_mask(v, (g + tf.random_uniform(g.shape, 0.01, 0.1)), bounds), v)
             #                    for g, v in gradients]
 
-            #randomised_grads = [(self.convert_to_random_step(v, g, step_size, bounds), v) for g, v in gradients]
-            #self.weight_upd_ops.append(opt.apply_gradients(randomised_grads))
+            # randomised_grads = [(self.convert_to_random_step(v, g, step_size, bounds), v) for g, v in gradients]
+            # self.weight_upd_ops.append(opt.apply_gradients(randomised_grads))
 
     # Calculate the hessian eigenvalues
     def calc_hess_eigens(self):
@@ -434,22 +458,22 @@ class FLANeuralNetwork(object):
         return step
 
     def convert_to_unbounded_random_step(self, inputs, grad, step_size):
-        #nonzero = tf.count_nonzero(grad)
-        #nonzero = tf.Print(nonzero, [nonzero], message="non-zero count: ")
+        # nonzero = tf.count_nonzero(grad)
+        # nonzero = tf.Print(nonzero, [nonzero], message="non-zero count: ")
 
-        #grad = self.grad_debug(grad)
+        # grad = self.grad_debug(grad)
 
         is_positive = grad > 0
         new_mask = tf.cast((1 + (-2) * tf.cast(is_positive, dtype=tf.int32)), dtype=tf.float32)
-        #nonzero = tf.count_nonzero(grad)
-        #nonzero = self.grad_debug(nonzero)
+        # nonzero = tf.count_nonzero(grad)
+        # nonzero = self.grad_debug(nonzero)
         # Now, the gradient vector has been interpreted as "direction", and reversed (follow negative gradient!).
-        #with tf.control_dependencies([nonzero]):
+        # with tf.control_dependencies([nonzero]):
         step = rs.unbounded_progressive_random_step_calc_tf(inputs, new_mask, step_size)
         return step
 
     def grad_debug(self, g):
-        g = tf.Print(g,[g],'G: ')
+        g = tf.Print(g, [g], 'G: ')
         return g
 
     def body(self, i, out_array):
@@ -490,14 +514,13 @@ class FLANeuralNetwork(object):
     def one_sim_tf(self, sess, num_walks, print_to_screen=False):
         all_walks = np.empty((num_walks, num_steps, 3))
         for walk_counter in range(0, num_walks):
-            sess.run(self.init) # initialise all weights/masks
+            sess.run(self.init)  # initialise all weights/masks
             one_walk = sess.run(self.run_random_walk_loop_op)
             if print_to_screen is True:
-                print("Done with walk number ", walk_counter+1)
+                print("Done with walk number ", walk_counter + 1)
             all_walks[walk_counter] = one_walk
 
         return all_walks
-
 
     # def build_model(self):
     #     self.logits = self.neural_net(self.X)
@@ -509,24 +532,26 @@ class FLANeuralNetwork(object):
     def one_sim_pos(self, sess, num_walks, num_steps, print_to_screen=False):
         all_walks = np.empty((num_walks, num_steps, 3))
         all_walks_pos = np.empty((num_walks, num_steps, self.all_weights[0].shape[0] * self.all_weights[0].shape[1]
-                        + self.all_weights[1].shape[0] + self.all_weights[2].shape[0] * self.all_weights[2].shape[1]
-                        + self.all_weights[3].shape[0]))
+                                  + self.all_weights[1].shape[0] + self.all_weights[2].shape[0] *
+                                  self.all_weights[2].shape[1]
+                                  + self.all_weights[3].shape[0]))
 
         for walk_counter in range(0, num_walks):
             error_history_py = np.empty((num_steps, 3))  # dimensions: x -> steps, y -> error metrics
 
             # FOR PLOTTING
             position_history_py = np.empty((num_steps, self.all_weights[0].shape[0] * self.all_weights[0].shape[1]
-                  + self.all_weights[1].shape[0] + self.all_weights[2].shape[0] * self.all_weights[2].shape[1]
-                  + self.all_weights[3].shape[0]))
+                                            + self.all_weights[1].shape[0] + self.all_weights[2].shape[0] *
+                                            self.all_weights[2].shape[1]
+                                            + self.all_weights[3].shape[0]))
 
-            sess.run(self.init) # initialise all weights/masks
+            sess.run(self.init)  # initialise all weights/masks
             sess.run(self.mask_init_ops)
             sess.run(self.weight_init_ops)
             for step in range(0, num_steps):
                 # Calculate batch loss and accuracy
                 ce, mse, acc = sess.run([self.ce_op, self.mse_op, self.acc_op])
-                if step % (num_steps/10) == 0 and print_to_screen is True:
+                if step % (num_steps / 10) == 0 and print_to_screen is True:
                     print("Step " + str(step) + ", Cross-entropy Loss = " + \
                           "{:.4f}".format(ce) + ", MSE Loss = " + \
                           "{:.4f}".format(mse) + ", Training Accuracy = " + \
@@ -543,12 +568,13 @@ class FLANeuralNetwork(object):
                 weight_matrix_2 = sess.run(self.all_weights[1])
                 weight_matrix_3 = sess.run(self.all_weights[2])
                 weight_matrix_4 = sess.run(self.all_weights[3])
-                plot_weights = np.concatenate((weight_matrix_1.ravel(), weight_matrix_2, weight_matrix_3.ravel(), weight_matrix_4))
-                #print(plot_weights)
+                plot_weights = np.concatenate(
+                    (weight_matrix_1.ravel(), weight_matrix_2, weight_matrix_3.ravel(), weight_matrix_4))
+                # print(plot_weights)
                 error_history_py[step] = [ce, mse, acc]
                 position_history_py[step] = plot_weights
             if print_to_screen is True:
-                print("Done with walk number ", walk_counter+1)
+                print("Done with walk number ", walk_counter + 1)
             all_walks[walk_counter] = error_history_py
             all_walks_pos[walk_counter] = position_history_py
 
@@ -581,7 +607,7 @@ class FLANeuralNetwork(object):
         for walk_counter in range(0, num_walks):
             error_history_py = np.empty((num_steps, num_vars))  # dimensions: x -> steps, y -> error metrics
 
-            sess.run(self.init) # initialise all weights/masks
+            sess.run(self.init)  # initialise all weights/masks
             sess.run(self.mask_init_ops)
             sess.run(self.weight_init_ops)
             for step in range(0, num_steps):
@@ -620,7 +646,7 @@ class FLANeuralNetwork(object):
                 if self.compute_grad_norm:
                     single_step.append(grad_norm)
 
-                if step % (num_steps/10) == 0 and print_to_screen is True:
+                if step % (num_steps / 10) == 0 and print_to_screen is True:
                     print("Step " + str(step) + ", Error = " +
                           "{:.4f}".format(error))
                     if self.compute_accuracy:
@@ -630,16 +656,13 @@ class FLANeuralNetwork(object):
                         print("Curvature: " + str(curvature))
                     if self.compute_grad_norm:
                         print("Gradient norm: " + str(grad_norm))
-                if self.walk_type == "random" or self.walk_type == "progressive":
-                    sess.run(self.weight_upd_ops)
-                elif self.walk_type == "manhattan":
+                if self.walk_type == "manhattan":
                     i = np.random.randint(0, len(weight_upd_ops), 1)
                     sess.run(self.weight_upd_ops[i])
-                elif self.walk_type == "gradient" or self.walk_type == "unbounded_gradient"\
-                        or self.walk_type == "adam_ce" or self.walk_type == "gd_ce":
+                else:
                     sess.run(self.weight_upd_ops)
 
-                error_history_py[step] = single_step #[ce, mse, acc]
+                error_history_py[step] = single_step  # [ce, mse, acc]
             print("Done with walk number ", walk_counter + 1)
             all_walks[walk_counter] = error_history_py
 
@@ -667,10 +690,9 @@ class FLANeuralNetwork(object):
         if self.compute_saturation:
             num_vars += 1
 
-
         error_history_py = np.empty((num_steps, num_vars))  # dimensions: x -> steps, y -> error metrics
-        #print("num vars: ", num_vars)
-        sess.run(self.init) # initialise all weights/masks
+        # print("num vars: ", num_vars)
+        sess.run(self.init)  # initialise all weights/masks
         sess.run(self.mask_init_ops)
         sess.run(self.weight_init_ops)
 
@@ -731,8 +753,7 @@ class FLANeuralNetwork(object):
             if self.compute_saturation:
                 single_step.append(sat)
 
-
-            if step % (num_steps/10) == 0 and print_to_screen is True:
+            if step % (num_steps / 10) == 0 and print_to_screen is True:
                 print("Step " + str(step) + ", Error = " +
                       "{:.4f}".format(error))
                 if self.compute_accuracy:
@@ -742,15 +763,12 @@ class FLANeuralNetwork(object):
                     print("Curvature: " + str(curvature))
                 if self.compute_grad_norm:
                     print("Gradient norm: " + str(grad_norm))
-            if self.walk_type == "random" or self.walk_type == "progressive":
-                sess.run(self.weight_upd_ops)
-            elif self.walk_type == "manhattan":
+            if self.walk_type == "manhattan":
                 i = np.random.randint(0, len(weight_upd_ops), 1)
                 sess.run(self.weight_upd_ops[i])
-            elif self.walk_type == "gradient" or self.walk_type == "unbounded_gradient"\
-                    or self.walk_type == "adam_ce" or self.walk_type == "gd_ce":
+            else:
                 sess.run(self.weight_upd_ops)
-            #print("single step: ", single_step)
+            # print("single step: ", single_step)
             error_history_py[step] = single_step
 
         return error_history_py
@@ -782,32 +800,32 @@ if __name__ == '__main__':
     with tf.Session() as sess:
         # Run the initializer
         tf.get_default_graph().finalize()
-        r1 = sess.run(b, feed_dict={a: [0,0,1,2,3,5]})
-        r2 = sess.run(b, feed_dict={a: [2,6,1,2,3,5]})
-        r3 = sess.run(b, feed_dict={a: [0,0,-1,2,3,5]})
-        r4 = sess.run(b, feed_dict={a: [-1,-1,-1,-2,-3,-5]})
-        r5 = sess.run(b, feed_dict={a: [1,-7,-1,2,3,5]})
+        r1 = sess.run(b, feed_dict={a: [0, 0, 1, 2, 3, 5]})
+        r2 = sess.run(b, feed_dict={a: [2, 6, 1, 2, 3, 5]})
+        r3 = sess.run(b, feed_dict={a: [0, 0, -1, 2, 3, 5]})
+        r4 = sess.run(b, feed_dict={a: [-1, -1, -1, -2, -3, -5]})
+        r5 = sess.run(b, feed_dict={a: [1, -7, -1, 2, 3, 5]})
 
-        if(r1 == Curvature.singular):
+        if (r1 == Curvature.singular):
             print("Correctly identified flat + positive")
-            #print("Ratio is ", str(r1r))
-        if(r2 == Curvature.convex):
+            # print("Ratio is ", str(r1r))
+        if (r2 == Curvature.convex):
             print("Correctly identified convexity")
-            #print("Ratio is ", str(r2r))
-        if(r3 == Curvature.singular):
+            # print("Ratio is ", str(r2r))
+        if (r3 == Curvature.singular):
             print("Correctly identified flat + positive + negative")
-            #print("Ratio is ", str(r3r))
-        if(r4 == Curvature.concave):
+            # print("Ratio is ", str(r3r))
+        if (r4 == Curvature.concave):
             print("Correctly identified concavity")
-            #print("Ratio is ", str(r4r))
-        if(r5 == Curvature.saddle):
+            # print("Ratio is ", str(r4r))
+        if (r5 == Curvature.saddle):
             print("Correctly identified saddle")
-            #print("Ratio is ", str(r5r))
+            # print("Ratio is ", str(r5r))
 
-        r1 = sess.run(c, feed_dict={a: [0,0,0,2,3,5]})
-        r2 = sess.run(c, feed_dict={a: [2,6,1,2,3,0.5]})
-        r3 = sess.run(c, feed_dict={a: [0,0,0,0,0,0]})
-        r4 = sess.run(c, feed_dict={a: [0,0,0,0,1,1]})
+        r1 = sess.run(c, feed_dict={a: [0, 0, 0, 2, 3, 5]})
+        r2 = sess.run(c, feed_dict={a: [2, 6, 1, 2, 3, 0.5]})
+        r3 = sess.run(c, feed_dict={a: [0, 0, 0, 0, 0, 0]})
+        r4 = sess.run(c, feed_dict={a: [0, 0, 0, 0, 1, 1]})
 
         if (r1 == 0.5):
             print("Correctly identified 0.5 saturation")
@@ -826,11 +844,13 @@ if __name__ == '__main__':
 
         saturated1 = -np.ones(100)
         saturated2 = np.ones(100)
-        sat = np.concatenate((saturated1,saturated2))
+        sat = np.concatenate((saturated1, saturated2))
 
         nonsat1 = np.zeros(100)
         nonsat2 = np.random.ranf(100)
-        nonsat3 = np.concatenate((-nonsat2,nonsat2))
+        nonsat3 = np.concatenate((-nonsat2, nonsat2))
 
-        print("Saturated ones:", get_tanh_saturation(saturated1), get_tanh_saturation(saturated2), get_tanh_saturation(sat))
-        print("Non-saturated:", get_tanh_saturation(nonsat1), get_tanh_saturation(nonsat2), get_tanh_saturation(nonsat3))
+        print("Saturated ones:", get_tanh_saturation(saturated1), get_tanh_saturation(saturated2),
+              get_tanh_saturation(sat))
+        print("Non-saturated:", get_tanh_saturation(nonsat1), get_tanh_saturation(nonsat2),
+              get_tanh_saturation(nonsat3))
