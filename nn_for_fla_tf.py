@@ -170,12 +170,12 @@ def dense_linear_layer(inputs, layer_name, input_size, output_size):
         layer_weights = tf.get_variable("weights",
                                         shape=[input_size, output_size],
                                         dtype=tf.float32,
-                                        initializer=tf.random_uniform_initializer())
+                                        initializer=tf.contrib.layers.xavier_initializer())
         # Create the biases for the layer
         layer_bias = tf.get_variable("biases",
                                      shape=[output_size],
                                      dtype=tf.float32,
-                                     initializer=tf.random_uniform_initializer())
+                                     initializer=tf.contrib.layers.xavier_initializer())
 
         outputs = tf.nn.xw_plus_b(inputs, layer_weights, layer_bias)
 
@@ -403,11 +403,13 @@ class FLANeuralNetwork(object):
                 self.grad_norm = tf.norm(grad_vector)
 
         elif self.walk_type == "gd":
-            optimizer = tf.train.GradientDescentOptimizer(learning_rate=step_size).minimize(self.error)
-            self.weight_upd_ops.append(optimizer)
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate=
+                                               tf.random_uniform([], minval=0.01*step_size, maxval=step_size))
+            self.weight_upd_ops.append(optimizer.minimize(self.error))
 
         elif self.walk_type == "adam":
-            optimizer = tf.train.AdamOptimizer(learning_rate=step_size)
+            optimizer = tf.train.AdamOptimizer(learning_rate=
+                                               tf.random_uniform([], minval=0.01*step_size, maxval=step_size))
             self.weight_upd_ops.append(optimizer.minimize(self.error))
 
         elif self.walk_type == "pgw":
@@ -419,13 +421,13 @@ class FLANeuralNetwork(object):
             optimizer = ProgressiveGradientWalkOptimizer(step_size=step_size)
             self.weight_upd_ops.append(optimizer.minimize(self.error))
 
-            # if self.compute_grad_norm:
-            #     gradients = tf.gradients(ys=self.error, xs=self.all_weights)
-            #     gradlist = []
-            #     for g in gradients:
-            #         gradlist.append(tf.reshape(g, [-1]))
-            #     grad_vector = tf.concat(gradlist, 0)
-            #     self.grad_norm = tf.norm(grad_vector)
+        if (self.walk_type == "gd" or self.walk_type == "adam" or self.walk_type == "pgw") and self.compute_grad_norm:
+                gradients = tf.gradients(ys=self.error, xs=self.all_weights)
+                gradlist = []
+                for g in gradients:
+                    gradlist.append(tf.reshape(g, [-1]))
+                grad_vector = tf.concat(gradlist, 0)
+                self.grad_norm = tf.norm(grad_vector)
 
             # opt = tf.train.GradientDescentOptimizer(learning_rate=1)
             # gradients = opt.compute_gradients(self.mse(), self.all_weights)

@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import math
 import numpy as np
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from io import StringIO
 
 
@@ -448,7 +448,7 @@ if __name__ == '__main__':
     #my_walk = sub[3, :]
     #print("walk:", my_walk)
 
-    # window = 4  # Test different window values; check the lengths; max length is the one to use
+    window = 6  # Test different window values; check the lengths; max length is the one to use
     # # Use exponential avg
     moving_avg = smoothed_ma(my_walk, window)
     moving_exp_avg = ewma(my_walk, window)
@@ -462,10 +462,14 @@ if __name__ == '__main__':
     else: avrg = 0
     print("stuck, archive, avg: ", len(y), y, avrg)
 
+    plt.figure(figsize=(5, 3.5))
     plt.plot(my_walk, label='The walk')
     plt.plot(std_graph, label="Std dev")
     plt.plot(moving_exp_avg, label='Exp moving avg')
     plt.plot(moving_std_exp_avg, label='Moving std dev')
     plt.legend(loc=0, borderaxespad=0.)
-    #plt.savefig("walk_12.eps", bbox_inches='tight')
+    plt.xlabel('Steps')
+    plt.ylabel('Error')
+    #plt.set_size_inches(18.5, 10.5)
+    plt.savefig("walk_6.eps", bbox_inches='tight')
     plt.show()
